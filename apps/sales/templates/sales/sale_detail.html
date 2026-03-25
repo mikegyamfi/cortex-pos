@@ -1,0 +1,292 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Invoice #{{ sale.invoice_number }} | Retail POS{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* --- THERMAL PRINT STYLES (For the Printer) --- */
+    @media print {
+        body {
+            visibility: hidden;
+            background-color: white;
+        }
+
+        /* Hide all UI */
+        .layout-navbar, .layout-menu, .content-footer, .d-print-none, .modal {
+            display: none !important;
+        }
+
+        @page {
+            size: auto;
+            margin: 0mm;
+        }
+
+        /* Show the Receipt Div */
+        #thermal-receipt-content {
+            visibility: visible;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 78mm; /* Standard 80mm width */
+            padding: 2mm;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.2;
+            color: black;
+            background: white;
+            display: block !important;
+        }
+        #thermal-receipt-content * { visibility: visible; }
+
+        .print-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        .print-divider { border-bottom: 1px dashed #000; margin: 5px 0; }
+        .print-center { text-align: center; }
+        .print-bold { font-weight: bold; }
+        .print-lg { font-size: 16px; }
+    }
+
+    /* --- SCREEN PREVIEW STYLES (For the Modal) --- */
+    .thermal-preview-wrapper {
+        background-color: #525659; /* Dark background to make paper pop */
+        padding: 40px 20px;
+        display: flex;
+        justify-content: center;
+        min-height: 400px;
+        overflow-y: auto;
+    }
+    .thermal-preview-paper {
+        width: 80mm;
+        background: white;
+        padding: 5mm;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        color: black;
+        margin: auto;
+    }
+    .print-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+    .print-divider { border-bottom: 1px dashed #ccc; margin: 5px 0; }
+    .print-center { text-align: center; }
+    .print-bold { font-weight: bold; }
+    .print-lg { font-size: 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- SCREEN VIEW (Standard Invoice Card) -->
+<div class="row justify-content-center d-print-none">
+    <div class="col-xl-8 col-lg-9 col-md-10 col-12 mb-4">
+
+     <!-- Debt Alert -->
+        {% if sale.balance_remaining > 0 %}
+        <div class="alert alert-danger d-flex align-items-center justify-content-between shadow-sm" role="alert">
+            <div>
+                <i class="ri-error-warning-line me-2"></i>
+                <strong>Outstanding Balance:</strong> The customer still owes <span class="fs-5 fw-bold">{{ sale.balance_remaining|intcomma }}</span>
+            </div>
+            <button class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#paymentModal">
+                <i class="ri-hand-coin-line me-1"></i> Settle Debt
+            </button>
+        </div>
+        {% endif %}
+
+        <div class="card shadow-lg border-0 rounded-3">
+            <div class="card-body p-5">
+                <!-- Invoice Header -->
+                <div class="d-flex justify-content-between align-items-start flex-column flex-sm-row mb-5">
+                    <div class="mb-4 mb-sm-0">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <span class="avatar-initial rounded bg-label-primary p-2">
+                                <i class="ri-store-2-fill ri-2x"></i>
+                            </span>
+                            <span class="h3 fw-bold mb-0 text-primary">{{ user.assigned_location.name }}</span>
+                        </div>
+                        <p class="mb-1 text-muted">{{ user.assigned_location.address }}</p>
+                        <p class="mb-0 text-muted">{{ user.assigned_location.phone_number }}</p>
+                    </div>
+                    <div class="text-sm-end">
+                        <h4 class="fw-bold mb-2">INVOICE #{{ sale.invoice_number|slice:":8" }}</h4>
+                        <div class="mb-1 text-muted">Date: <span class="fw-semibold text-dark">{{ sale.created_at|date:"d M Y, H:i" }}</span></div>
+                        <div class="text-muted">Cashier: <span class="fw-semibold text-dark">{{ sale.cashier.username }}</span></div>
+                    </div>
+                </div>
+
+                <hr class="my-4 text-light">
+
+                <!-- Items Table -->
+                <div class="table-responsive mb-4">
+                    <table class="table table-borderless">
+                        <thead class="border-bottom p-2">
+                            <tr>
+                                <th class="ps-0">Item</th>
+                                <th class="text-center">Qty</th>
+                                <th class="text-end">Price</th>
+                                <th class="text-end pe-0">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in sale.items.all %}
+                            <tr>
+                                <td class="ps-0">
+                                    <span class="fw-medium text-heading">{{ item.product.name }}</span>
+                                </td>
+                                <td class="text-center">{{ item.quantity }}</td>
+                                <td class="text-end">{{ item.unit_price|intcomma }}</td>
+                                <td class="text-end pe-0 fw-medium">{{ item.total_price|intcomma }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-4 mb-md-0">
+                        <div class="p-3 bg-lighter rounded">
+                            <h6 class="mb-2 fw-bold text-muted text-uppercase fs-tiny">Payment Methods</h6>
+                            <ul class="list-unstyled mb-0">
+                                {% for payment in sale.payments.all %}
+                                <li class="d-flex justify-content-between mb-1">
+                                    <span class="fw-medium">{{ payment.get_payment_method_display }}</span>
+                                    <span>{{ payment.amount|intcomma }}</span>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6 d-flex justify-content-end">
+                        <div class="invoice-calculations w-100" style="max-width: 320px;">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-muted">Subtotal:</span>
+                                <span class="fw-semibold">{{ sale.subtotal|intcomma }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-muted">Tax:</span>
+                                <span class="fw-semibold">{{ sale.total_tax|intcomma }}</span>
+                            </div>
+                            <hr class="my-3">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="h5 mb-0">Total:</span>
+                                <span class="h5 mb-0 text-primary">{{ sale.total_amount|intcomma }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between text-muted">
+                                <span>Change:</span>
+                                <span>{{ sale.change_due|intcomma }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions Footer -->
+            <div class="card-footer p-4 border-top bg-white rounded-bottom-3">
+                <div class="d-flex justify-content-center gap-3 flex-wrap">
+                    <button class="btn btn-outline-secondary btn-lg" data-bs-toggle="modal" data-bs-target="#previewModal">
+                        <i class="ri-file-list-2-line me-2"></i> Thermal Preview
+                    </button>
+                    <button class="btn btn-primary btn-lg px-5" onclick="window.print()">
+                        <i class="ri-printer-line me-2"></i> Print Invoice
+                    </button>
+                    <a href="{% url 'sales:pos' %}" class="btn btn-success btn-lg">
+                        <i class="ri-shopping-cart-2-line me-2"></i> Next Sale
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- PAYMENT MODAL -->
+<div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Record Payment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{% url 'sales:add_payment' sale.pk %}" method="post">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        Adding payment to current session ({{ user.username }}).
+                    </div>
+
+                    <label class="form-label">Payment Amount</label>
+                    <div class="input-group mb-3">
+                        <span class="input-group-text">GHS</span>
+                        <input type="number" step="0.01" name="amount" class="form-control form-control-lg fw-bold" value="{{ sale.balance_remaining }}" max="{{ sale.balance_remaining }}" required>
+                    </div>
+
+                    <label class="form-label">Method</label>
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <input type="radio" class="btn-check" name="payment_method" id="modal_cash" value="CASH" checked>
+                            <label class="btn btn-outline-primary w-100" for="modal_cash">Cash</label>
+                        </div>
+                        <div class="col-4">
+                            <input type="radio" class="btn-check" name="payment_method" id="modal_momo" value="MOMO">
+                            <label class="btn btn-outline-success w-100" for="modal_momo">MoMo</label>
+                        </div>
+                        <div class="col-4">
+                            <input type="radio" class="btn-check" name="payment_method" id="modal_card" value="CARD">
+                            <label class="btn btn-outline-info w-100" for="modal_card">Card</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Confirm Payment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- PREVIEW MODAL (Visualizes the 80mm Receipt) -->
+<div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 overflow-hidden">
+            <div class="modal-header bg-dark text-white border-0">
+                <h5 class="modal-title text-white">Thermal Receipt Preview</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0 thermal-preview-wrapper">
+                <!-- The Visual Representation -->
+                <div class="thermal-preview-paper">
+                    {% include 'sales/partials/receipt_content.html' %}
+                </div>
+            </div>
+            <div class="modal-footer bg-light justify-content-between">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary px-4" onclick="window.print()">
+                    <i class="ri-printer-fill me-2"></i> Print
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- HIDDEN PRINT DIV (Used by Browser Printer) -->
+<div id="thermal-receipt-content" class="d-none">
+    {% include 'sales/partials/receipt_content.html' %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Check URL for Auto-Print flag
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('print') === 'true') {
+            // Automatically open preview modal first so they see the visual
+            const previewModal = new bootstrap.Modal(document.getElementById('previewModal'));
+            previewModal.show();
+
+            // Optional: Auto-trigger print dialog after 1 second
+            // setTimeout(() => window.print(), 1000);
+        }
+    };
+</script>
+{% endblock %}

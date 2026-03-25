@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block title %}SMS Logs | Retail POS{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header border-bottom">
+        <h5 class="mb-0">Notification Logs (SMS/Email)</h5>
+    </div>
+    <div class="table-responsive text-nowrap">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Type</th>
+                    <th>Recipient</th>
+                    <th>Context</th>
+                    <th>Status</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.created_at|date:"d M H:i" }}</td>
+                    <td>
+                        {% if log.type == 'SMS' %}
+                            <span class="badge bg-label-info"><i class="ri-smartphone-line me-1"></i> SMS</span>
+                        {% else %}
+                            <span class="badge bg-label-primary"><i class="ri-mail-line me-1"></i> Email</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="fw-bold">{{ log.recipient }}</span>
+                        {% if log.customer %}
+                        <br><small class="text-muted">{{ log.customer.get_display_name }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if log.sale %}
+                            <a href="{% url 'sales:detail' log.sale.pk %}">Inv #{{ log.sale.invoice_number|slice:":8" }}</a>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if log.status == 'SENT' %}
+                            <span class="badge bg-success">Sent</span>
+                        {% elif log.status == 'FAILED' %}
+                            <span class="badge bg-danger">Failed</span>
+                        {% else %}
+                            <span class="badge bg-warning">Queued</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="popover" data-bs-content="{{ log.message_content }}" title="Message Content">
+                            View Msg
+                        </button>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center py-5">No notifications recorded yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

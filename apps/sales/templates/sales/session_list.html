@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Cashier Shifts | Retail POS{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Register Shifts (Sessions)</h5>
+    </div>
+    <div class="table-responsive text-nowrap">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Started</th>
+                    <th>Ended</th>
+                    <th>Opening Float</th>
+                    <th>Status</th>
+                    <th>Sales Count</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for session in sessions %}
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="avatar avatar-sm me-2">
+                                <span class="avatar-initial rounded-circle bg-label-primary">
+                                    {{ session.user.username|slice:":2"|upper }}
+                                </span>
+                            </div>
+                            <div>
+                                <span class="fw-bold">{{ session.user.get_full_name|default:session.user.username }}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        {{ session.start_time|date:"d M H:i" }}
+                    </td>
+                    <td>
+                        {% if session.end_time %}
+                            {{ session.end_time|date:"d M H:i" }}
+                        {% else %}
+                            <span class="text-success fw-bold">Active Now</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ session.opening_balance|intcomma }}</td>
+                    <td>
+                        {% if session.status == 'OPEN' %}
+                            <span class="badge bg-success">OPEN</span>
+                        {% elif session.status == 'CLOSED' %}
+                            <span class="badge bg-secondary">CLOSED</span>
+                        {% else %}
+                            <span class="badge bg-danger">{{ session.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ session.sales.count }}
+                    </td>
+                    <td>
+                        {% if session.status == 'OPEN' and session.user == user %}
+                            <a href="{% url 'sales:close_register' %}" class="btn btn-sm btn-outline-danger">Close Shift</a>
+                        {% else %}
+                            <!-- Updated Link to the new Report View -->
+                            <a href="{% url 'sales:session_detail' session.pk %}" class="btn btn-sm btn-outline-secondary">View Report</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center py-5">
+                        <div class="text-muted">
+                            <i class="ri-store-2-line ri-3x mb-3"></i>
+                            <p>No shift history available.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

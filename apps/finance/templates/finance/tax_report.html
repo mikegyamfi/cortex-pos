@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Tax Report | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center border-bottom">
+                <h5 class="mb-0">Tax Collection Report</h5>
+
+                <form method="get" class="d-flex align-items-center gap-2">
+                    <input type="date" class="form-control form-control-sm" name="start_date" value="{{ start_date }}">
+                    <span class="text-muted">-</span>
+                    <input type="date" class="form-control form-control-sm" name="end_date" value="{{ end_date }}">
+                    <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+                </form>
+            </div>
+
+            <div class="card-body">
+                <div class="alert alert-info d-flex align-items-center" role="alert">
+                    <i class="ri-information-line me-2"></i>
+                    <div>
+                        Showing accumulated tax liabilities from completed sales.
+                    </div>
+                </div>
+
+                <div class="table-responsive border rounded">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Tax Name</th>
+                                <th>Rate</th>
+                                <th class="text-end">Collected Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tax in tax_summary %}
+                            <tr>
+                                <td><span class="fw-bold">{{ tax.tax_name }}</span></td>
+                                <td>{{ tax.tax_rate }}%</td>
+                                <td class="text-end">{{ tax.total_collected|intcomma }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="3" class="text-center py-4 text-muted">No tax data found for this period.</td>
+                            </tr>
+                            {% endfor %}
+
+                            <tr class="bg-label-secondary border-top">
+                                <td colspan="2" class="fw-bold ps-4 text-uppercase">Total Tax Liability</td>
+                                <td class="text-end fw-bold pe-4 fs-5">{{ total_tax_collected|intcomma }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-4 text-end">
+                    <button class="btn btn-outline-secondary" onclick="window.print()">
+                        <i class="ri-printer-line me-1"></i> Print Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

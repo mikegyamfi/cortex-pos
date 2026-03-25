@@ -1,0 +1,316 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Profit & Loss | Retail POS{% endblock %}
+
+{% block extra_css %}
+<style>
+    .kpi-card {
+        transition: transform 0.2s;
+        border: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    }
+    .kpi-card:hover {
+        transform: translateY(-5px);
+    }
+    .statement-table th {
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #566a7f;
+        background-color: #f8f9fa;
+        padding: 1rem;
+    }
+    .statement-table td {
+        padding: 0.8rem 1rem;
+        vertical-align: middle;
+    }
+    .section-header {
+        font-weight: 700;
+        color: #566a7f;
+        background-color: #fdfdfd;
+    }
+    .row-total {
+        font-weight: 700;
+        background-color: #fcfcfc;
+    }
+    .row-highlight {
+        background-color: rgba(105, 108, 255, 0.08) !important;
+        color: #696cff;
+        font-weight: 800;
+        font-size: 1.1rem;
+    }
+    .row-highlight-danger {
+        background-color: rgba(255, 62, 29, 0.08) !important;
+        color: #ff3e1d;
+        font-weight: 800;
+        font-size: 1.1rem;
+    }
+    @media print {
+        .no-print { display: none !important; }
+        .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4">
+    <!-- Header & Filter -->
+    <div class="col-12 d-flex flex-column flex-md-row justify-content-between align-items-center">
+        <div>
+            <h4 class="fw-bold mb-0">Profit & Loss Statement</h4>
+            <p class="text-muted mb-0">Financial Performance Analysis</p>
+        </div>
+
+        <form method="get" class="d-flex align-items-center gap-2 mt-3 mt-md-0 p-2 bg-white rounded shadow-sm">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text bg-transparent border-0 text-muted"><i class="ri-calendar-line"></i></span>
+                <input type="date" class="form-control border-0 bg-transparent" name="start_date" value="{{ start_date }}">
+            </div>
+            <span class="text-muted">-</span>
+            <div class="input-group input-group-sm">
+                <input type="date" class="form-control border-0 bg-transparent" name="end_date" value="{{ end_date }}">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm rounded-pill px-3">Apply</button>
+            <button type="button" class="btn btn-icon btn-outline-secondary btn-sm rounded-pill" onclick="window.print()">
+                <i class="ri-printer-line"></i>
+            </button>
+        </form>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="col-xl-3 col-md-6">
+        <div class="card kpi-card h-100 border-start border-primary border-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <span class="fw-semibold text-primary d-block mb-1">Total Revenue</span>
+                        <h4 class="mb-0">{{ total_revenue|intcomma }}</h4>
+                    </div>
+                    <div class="avatar bg-label-primary rounded p-2">
+                        <i class="ri-money-dollar-circle-line ri-24px"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card kpi-card h-100 border-start border-warning border-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <span class="fw-semibold text-warning d-block mb-1">Cost of Goods (COGS)</span>
+                        <h4 class="mb-0 text-danger">- {{ total_cogs|intcomma }}</h4>
+                    </div>
+                    <div class="avatar bg-label-warning rounded p-2">
+                        <i class="ri-shopping-cart-line ri-24px"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card kpi-card h-100 border-start border-danger border-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <span class="fw-semibold text-danger d-block mb-1">Op. Expenses</span>
+                        <h4 class="mb-0 text-danger">- {{ total_expenses|intcomma }}</h4>
+                    </div>
+                    <div class="avatar bg-label-danger rounded p-2">
+                        <i class="ri-bill-line ri-24px"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card kpi-card h-100 border-start {% if net_profit >= 0 %}border-success{% else %}border-danger{% endif %} border-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <span class="fw-semibold {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %} d-block mb-1">Net Profit</span>
+                        <h4 class="mb-0 {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">{{ net_profit|intcomma }}</h4>
+                    </div>
+                    <div class="avatar {% if net_profit >= 0 %}bg-label-success{% else %}bg-label-danger{% endif %} rounded p-2">
+                        {% if net_profit >= 0 %}
+                            <i class="ri-line-chart-line ri-24px"></i>
+                        {% else %}
+                            <i class="ri-funds-line ri-24px"></i>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Statement Table -->
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header border-bottom">
+                <h5 class="mb-0">Statement Details</h5>
+            </div>
+            <div class="table-responsive">
+                <table class="table statement-table mb-0">
+                    <tbody>
+                        <!-- INCOME SECTION -->
+                        <tr class="section-header">
+                            <td colspan="2"><i class="ri-add-circle-line text-success me-2"></i> INCOME</td>
+                        </tr>
+                        <tr>
+                            <td class="ps-4">Sales Revenue</td>
+                            <td class="text-end fw-bold">{{ total_revenue|intcomma }}</td>
+                        </tr>
+                        <tr class="row-total border-bottom">
+                            <td class="ps-4">Total Income</td>
+                            <td class="text-end text-primary">{{ total_revenue|intcomma }}</td>
+                        </tr>
+
+                        <!-- COGS SECTION -->
+                        <tr class="section-header">
+                            <td colspan="2"><i class="ri-subtract-line text-danger me-2"></i> DIRECT COSTS</td>
+                        </tr>
+                        <tr>
+                            <td class="ps-4">Cost of Goods Sold</td>
+                            <td class="text-end text-danger">- {{ total_cogs|intcomma }}</td>
+                        </tr>
+                        <tr class="row-highlight">
+                            <td class="ps-4">GROSS PROFIT</td>
+                            <td class="text-end">{{ gross_profit|intcomma }}</td>
+                        </tr>
+
+                        <!-- EXPENSES SECTION -->
+                        <tr class="section-header">
+                            <td colspan="2"><i class="ri-indeterminate-circle-line text-warning me-2"></i> OPERATING EXPENSES</td>
+                        </tr>
+                        {% for exp in expense_breakdown %}
+                        <tr>
+                            <td class="ps-4 d-flex justify-content-between">
+                                <span>{{ exp.category__name }}</span>
+                                <!-- Optional percentage calc if needed -->
+                            </td>
+                            <td class="text-end text-muted">- {{ exp.total|intcomma }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td class="ps-4 text-muted fst-italic">No expenses recorded</td>
+                            <td class="text-end">-</td>
+                        </tr>
+                        {% endfor %}
+                        <tr class="row-total border-bottom">
+                            <td class="ps-4">Total Expenses</td>
+                            <td class="text-end text-danger">- {{ total_expenses|intcomma }}</td>
+                        </tr>
+
+                        <!-- NET PROFIT -->
+                        <tr class="{% if net_profit >= 0 %}row-highlight{% else %}row-highlight-danger{% endif %} border-top border-3">
+                            <td class="ps-4 py-3">NET PROFIT / (LOSS)</td>
+                            <td class="text-end py-3">{{ net_profit|intcomma }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Visualizations -->
+    <div class="col-lg-4">
+        <!-- Expense Breakdown Chart -->
+        <div class="card h-100">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5 class="card-title m-0 me-2">Expense Breakdown</h5>
+            </div>
+            <div class="card-body">
+                {% if total_expenses > 0 %}
+                    <div id="expenseChart" style="min-height: 300px;"></div>
+                {% else %}
+                    <div class="d-flex flex-column align-items-center justify-content-center h-100 text-muted py-5">
+                        <i class="ri-pie-chart-line ri-3x mb-3 opacity-25"></i>
+                        <p>No expense data to visualize</p>
+                    </div>
+                {% endif %}
+            </div>
+            <div class="card-footer border-top p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="text-muted">Profit Margin</span>
+                    {% if total_revenue > 0 %}
+                        <span class="fw-bold text-dark">
+                            {% widthratio net_profit total_revenue 100 %}%
+                        </span>
+                    {% else %}
+                        <span class="fw-bold">0%</span>
+                    {% endif %}
+                </div>
+                <div class="progress" style="height: 8px;">
+                    <div class="progress-bar {% if net_profit >= 0 %}bg-success{% else %}bg-danger{% endif %}"
+                         role="progressbar"
+                         style="width: {% if total_revenue > 0 %}{% widthratio net_profit total_revenue 100 %}{% else %}0{% endif %}%">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'assets/vendor/libs/apex-charts/apexcharts.js' %}"></script>
+<script>
+    {% if total_expenses > 0 %}
+    // Parse Django Data for Chart
+    const categories = [{% for exp in expense_breakdown %}"{{ exp.category__name }}",{% endfor %}];
+    const amounts = [{% for exp in expense_breakdown %}{{ exp.total }},{% endfor %}];
+
+    const chartOptions = {
+        series: amounts,
+        labels: categories,
+        chart: {
+            type: 'donut',
+            height: 320,
+            fontFamily: 'Inter, sans-serif'
+        },
+        colors: ['#696cff', '#71dd37', '#ff3e1d', '#ffab00', '#03c3ec', '#8592a3'],
+        plotOptions: {
+            pie: {
+                donut: {
+                    size: '70%',
+                    labels: {
+                        show: true,
+                        value: {
+                            fontSize: '1.5rem',
+                            fontWeight: 'bold',
+                            formatter: function (val) {
+                                return parseFloat(val).toLocaleString();
+                            }
+                        },
+                        total: {
+                            show: true,
+                            label: 'Expenses',
+                            color: '#566a7f',
+                            formatter: function (w) {
+                                const total = w.globals.seriesTotals.reduce((a, b) => a + b, 0);
+                                return total.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        legend: {
+            position: 'bottom',
+            labels: {
+                colors: '#566a7f'
+            }
+        },
+        dataLabels: {
+            enabled: false
+        }
+    };
+
+    const chart = new ApexCharts(document.querySelector("#expenseChart"), chartOptions);
+    chart.render();
+    {% endif %}
+</script>
+{% endblock %}

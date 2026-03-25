@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Expenses | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Summary Cards -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted d-block mb-1">Expenses This Month</span>
+                    <h4 class="mb-0 text-danger">- {{ total_month|intcomma }}</h4>
+                </div>
+                <div class="avatar avatar-md bg-label-danger rounded">
+                    <i class="ri-money-dollar-circle-line ri-24px"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted d-block mb-1">Pending Approval</span>
+                    <h4 class="mb-0 text-warning">{{ pending_count }}</h4>
+                </div>
+                <div class="avatar avatar-md bg-label-warning rounded">
+                    <i class="ri-time-line ri-24px"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expense Table -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Expense History</h5>
+                <a href="{% url 'finance:expense_create' %}" class="btn btn-primary">
+                    <i class="ri-add-line me-1"></i> Record Expense
+                </a>
+            </div>
+            <div class="table-responsive text-nowrap">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Category</th>
+                            <th>Amount</th>
+                            <th>Paid From</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for expense in expenses %}
+                        <tr>
+                            <td>{{ expense.date_incurred|date:"d M Y" }}</td>
+                            <td>
+                                <span class="fw-medium">{{ expense.description|truncatechars:30 }}</span>
+                                <br><small class="text-muted">By: {{ expense.requested_by.username }}</small>
+                            </td>
+                            <td><span class="badge bg-label-secondary">{{ expense.category.name }}</span></td>
+                            <td class="fw-bold">{{ expense.amount|intcomma }}</td>
+                            <td>
+                                {% if expense.is_paid_from_till %}
+                                    <span class="badge bg-label-info">Cash Drawer</span>
+                                {% else %}
+                                    <span class="badge bg-label-secondary">Bank/Other</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if expense.status == 'APPROVED' %}
+                                    <span class="badge bg-success">Approved</span>
+                                {% elif expense.status == 'REJECTED' %}
+                                    <span class="badge bg-danger">Rejected</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if expense.status == 'PENDING' and user.role in 'OWNER,MANAGER' %}
+                                <form method="post" action="{% url 'finance:expense_approve' expense.pk %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" name="action" value="approve" class="btn btn-sm btn-icon btn-text-success rounded-pill" title="Approve">
+                                        <i class="ri-check-line"></i>Approve
+                                    </button>
+                                    <button type="submit" name="action" value="reject" class="btn btn-sm btn-icon btn-text-danger rounded-pill" title="Reject">
+                                        <i class="ri-close-line"></i>Reject
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% if expense.receipt_image %}
+                                    <a href="{{ expense.receipt_image.url }}" target="_blank" class="btn btn-sm btn-icon btn-text-primary rounded-pill" title="View Receipt">
+                                        <i class="ri-file-paper-2-line"></i>
+                                    </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5">No expenses recorded.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

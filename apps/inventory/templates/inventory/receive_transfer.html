@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+
+{% block title %}Receive Transfer | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-0">Confirm Receipt: {{ transfer.reference_number }}</h5>
+                    <p class="mb-0 text-muted">Sent from: <strong>{{ transfer.source_location.name }}</strong></p>
+                </div>
+                <span class="badge bg-info">In Transit</span>
+            </div>
+
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="alert alert-primary" role="alert">
+                        <i class="ri-truck-line me-2"></i>
+                        Please count the physical items arriving at your location.
+                        Enter the <strong>Quantity Received</strong> below.
+                    </div>
+
+                    <div class="table-responsive border rounded mb-4">
+                        <table class="table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 40%">Product</th>
+                                    <th style="width: 20%">Requested</th>
+                                    <th style="width: 20%">Sent (Warehouse)</th>
+                                    <th style="width: 20%">Received (You)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in transfer.items.all %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ item.product.name }}</strong>
+                                        <br><small class="text-muted">{{ item.product.sku }}</small>
+                                    </td>
+                                    <td class="text-muted">{{ item.quantity_requested }}</td>
+                                    <td class="fw-bold">{{ item.quantity_sent }}</td>
+                                    <td>
+                                        <input type="number"
+                                               name="received_qty_{{ item.id }}"
+                                               class="form-control"
+                                               value="{{ item.quantity_sent }}"
+                                               min="0"
+                                               required>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Notes (Optional)</label>
+                        <textarea name="notes" class="form-control" rows="2" placeholder="Mention any damages or missing items..."></textarea>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="{% url 'inventory:transfer_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="ri-check-double-line me-1"></i> Confirm & Add to Inventory
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

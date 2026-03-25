@@ -1,0 +1,244 @@
+{% load static %}
+<aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
+  <!-- Brand / Logo -->
+  <div class="app-brand demo">
+    <a href="{% url 'dashboard:index' %}" class="app-brand-link">
+      <span class="app-brand-logo demo me-1">
+        <span class="text-primary">
+            <!-- SVG Logo -->
+             <svg width="30" height="24" viewBox="0 0 250 196" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M12.3002 1.25469L56.655 28.6432C59.0349 30.1128 60.4839 32.711 60.4839 35.5089V160.63C60.4839 163.468 58.9941 166.097 56.5603 167.553L12.2055 194.107C8.3836 196.395 3.43136 195.15 1.14435 191.327C0.395485 190.075 0 188.643 0 187.184V8.12039C0 3.66447 3.61061 0.0522461 8.06452 0.0522461C9.56056 0.0522461 11.0271 0.468577 12.3002 1.25469Z" fill="currentColor" />
+             </svg>
+        </span>
+      </span>
+      <span class="app-brand-text demo menu-text fw-semibold ms-2">Cortex POS</span>
+    </a>
+
+    <a href="javascript:void(0);" class="layout-menu-toggle menu-link text-large ms-auto">
+      <i class="menu-toggle-icon d-xl-inline-block align-middle"></i>
+    </a>
+  </div>
+
+  <div class="menu-inner-shadow"></div>
+
+  <ul class="menu-inner py-1">
+
+    <!-- ============================================== -->
+    <!-- 1. DASHBOARDS (Context Aware)                  -->
+    <!-- ============================================== -->
+    <li class="menu-item {% if request.resolver_match.app_name == 'dashboard' %}active{% endif %}">
+      <a href="{% url 'dashboard:index' %}" class="menu-link">
+        <i class="menu-icon icon-base ri ri-home-smile-line"></i>
+        <div data-i18n="Analytics">
+            {% if user.role == 'CASHIER' or user.role == 'SALESPERSON' %}
+                POS Terminal
+            {% elif user.role == 'WAREHOUSE_STAFF' %}
+                Warehouse Ops
+            {% else %}
+                Overview
+            {% endif %}
+        </div>
+      </a>
+    </li>
+
+    <!-- ============================================== -->
+    <!-- 2. SALES & POS (Cashier, Sales, Manager, Owner) -->
+    <!-- ============================================== -->
+    {% if user.role in 'OWNER,MANAGER,CASHIER,SALESPERSON' %}
+    <li class="menu-header mt-7"><span class="menu-header-text">Point of Sale</span></li>
+
+    <li class="menu-item">
+      <a href="{% url 'sales:pos' %}" class="menu-link">
+        <i class="menu-icon icon-base ri ri-computer-line"></i>
+        <div data-i18n="POS Terminal">New Sale</div>
+      </a>
+    </li>
+
+    <li class="menu-item">
+        <a href="javascript:void(0);" class="menu-link menu-toggle">
+          <i class="menu-icon icon-base ri ri-bill-line"></i>
+          <div data-i18n="Orders">Orders & Receipts</div>
+        </a>
+        <ul class="menu-sub">
+          <li class="menu-item">
+            <a href="{% url 'sales:list' %}" class="menu-link">
+              <div data-i18n="Transaction History">History</div>
+            </a>
+          </li>
+          <li class="menu-item">
+            <a href="{% url 'sales:returns' %}" class="menu-link">
+              <div data-i18n="Returns & Refunds">Returns</div>
+            </a>
+          </li>
+          <li class="menu-item">
+            <a href="{% url 'sales:deliveries' %}" class="menu-link">
+              <div data-i18n="Deliveries">Deliveries (Yango/Uber)</div>
+            </a>
+          </li>
+        </ul>
+    </li>
+
+    <li class="menu-item">
+        <a href="{% url 'customers:list' %}" class="menu-link">
+          <i class="menu-icon icon-base ri ri-group-line"></i>
+          <div data-i18n="Customers">Customers</div>
+        </a>
+    </li>
+    {% endif %}
+
+    <!-- ============================================== -->
+    <!-- 3. INVENTORY (Warehouse, Manager, Owner)       -->
+    <!-- ============================================== -->
+    {% if user.role in 'OWNER,MANAGER,WAREHOUSE_STAFF' %}
+    <li class="menu-header mt-7"><span class="menu-header-text">Inventory & Stock</span></li>
+
+    <li class="menu-item">
+        <a href="javascript:void(0);" class="menu-link menu-toggle">
+          <i class="menu-icon icon-base ri ri-archive-line"></i>
+          <div data-i18n="Inventory">Stock Management</div>
+        </a>
+        <ul class="menu-sub">
+          <li class="menu-item">
+            <a href="{% url 'inventory:dashboard' %}" class="menu-link">
+              <div data-i18n="Stock Levels">Stock Levels</div>
+            </a>
+          </li>
+          <li class="menu-item">
+            <a href="{% url 'inventory:receive_stock' %}" class="menu-link">
+              <div data-i18n="Receive Stock">Receive Goods (GRN)</div>
+            </a>
+          </li>
+          <li class="menu-item">
+            <a href="{% url 'inventory:create_transfer' %}" class="menu-link">
+              <div data-i18n="Transfers">Transfer Stock</div>
+            </a>
+          </li>
+             <li class="menu-item">
+            <!-- UPDATED: Points to List instead of Create -->
+            <a href="{% url 'inventory:transfer_list' %}" class="menu-link">
+              <div data-i18n="Transfers">Transfers & Movement</div>
+            </a>
+          </li>
+          <li class="menu-item">
+            <a href="{% url 'inventory:adjustments' %}" class="menu-link">
+              <div data-i18n="Adjustments">Damage / Loss</div>
+            </a>
+          </li>
+          <li class="menu-item">
+            <a href="{% url 'inventory:expiry_alerts' %}" class="menu-link">
+              <div data-i18n="Expiry Alerts">Expiry Alerts <span class="badge bg-danger rounded-pill ms-auto">!</span></div>
+            </a>
+          </li>
+        </ul>
+    </li>
+
+    <li class="menu-item">
+        <a href="{% url 'products:product_list' %}" class="menu-link">
+          <i class="menu-icon icon-base ri ri-shopping-bag-3-line"></i>
+          <div data-i18n="Products">Product Catalog</div>
+        </a>
+    </li>
+    {% endif %}
+
+    <!-- ============================================== -->
+    <!-- 4. FINANCE (Owner, Manager, Accountant)        -->
+    <!-- ============================================== -->
+    {% if user.role in 'OWNER,MANAGER,ACCOUNTANT' %}
+    <li class="menu-header mt-7"><span class="menu-header-text">Finance & Books</span></li>
+
+    <li class="menu-item">
+        <a href="javascript:void(0);" class="menu-link menu-toggle">
+          <i class="menu-icon icon-base ri ri-money-dollar-circle-line"></i>
+          <div data-i18n="Finance">Finance</div>
+        </a>
+        <ul class="menu-sub">
+          <li class="menu-item">
+            <a href="{% url 'finance:expenses_list' %}" class="menu-link">
+              <div data-i18n="Expenses">Expenses</div>
+            </a>
+          </li>
+          {% if user.role == 'OWNER' or user.role == 'ACCOUNTANT' %}
+          <li class="menu-item">
+            <a href="{% url 'finance:profit_loss' %}" class="menu-link">
+              <div data-i18n="Profit & Loss">Profit & Loss</div>
+            </a>
+          </li>
+          <li class="menu-item">
+            <a href="{% url 'finance:tax_report' %}" class="menu-link">
+              <div data-i18n="Tax Reports">Tax Reports</div>
+            </a>
+          </li>
+          {% endif %}
+          <li class="menu-item">
+            <a href="{% url 'sales:sessions' %}" class="menu-link">
+              <div data-i18n="Shift Closures">Shift Closures</div>
+            </a>
+          </li>
+        </ul>
+    </li>
+    {% endif %}
+
+    <!-- ============================================== -->
+    <!-- 5. ANALYTICS & REPORTS (Owner, Manager)        -->
+    <!-- ============================================== -->
+    {% if user.role == 'OWNER' or user.role == 'MANAGER' %}
+    <li class="menu-header mt-7"><span class="menu-header-text">Intelligence</span></li>
+
+    <li class="menu-item">
+        <a href="" class="menu-link">
+          <i class="menu-icon icon-base ri ri-pie-chart-2-line"></i>
+          <div data-i18n="Reports">Business Reports</div>
+        </a>
+    </li>
+    <li class="menu-item">
+        <a href="" class="menu-link">
+          <i class="menu-icon icon-base ri ri-user-star-line"></i>
+          <div data-i18n="Staff Performance">Staff Performance</div>
+        </a>
+    </li>
+    <li class="menu-item">
+        <a href="" class="menu-link">
+          <i class="menu-icon icon-base ri ri-notification-3-line"></i>
+          <div data-i18n="SMS Logs">SMS/Email Logs</div>
+        </a>
+    </li>
+    {% endif %}
+
+    <!-- ============================================== -->
+    <!-- 6. ADMIN & SETTINGS (Owner Only)               -->
+    <!-- ============================================== -->
+    {% if user.role == 'OWNER' %}
+    <li class="menu-header mt-7"><span class="menu-header-text">Administration</span></li>
+
+    <li class="menu-item">
+        <a href="javascript:void(0);" class="menu-link menu-toggle">
+          <i class="menu-icon icon-base ri ri-settings-3-line"></i>
+          <div data-i18n="Settings">Settings</div>
+        </a>
+        <ul class="menu-sub">
+          <li class="menu-item">
+            <a href="" class="menu-link">
+              <div data-i18n="Locations">Warehouses & Shops</div>
+            </a>
+          </li>
+          <li class="menu-item">
+            <a href="{% url 'users:list' %}" class="menu-link">
+              <div data-i18n="Users">User Management</div>
+            </a>
+          </li>
+          <li class="menu-item">
+            <a href="" class="menu-link">
+              <div data-i18n="Targets">Set Targets</div>
+            </a>
+          </li>
+          <li class="menu-item">
+            <a href="" class="menu-link" target="_blank">
+              <div data-i18n="System Admin">Django Admin</div>
+            </a>
+          </li>
+        </ul>
+    </li>
+    {% endif %}
+
+  </ul>
+</aside>

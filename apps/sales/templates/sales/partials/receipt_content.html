@@ -1,0 +1,80 @@
+{% load humanize %}
+<!-- Header -->
+<div class="print-center">
+    <div class="print-lg print-bold">{{ user.assigned_location.name|upper }}</div>
+    <div>{{ user.assigned_location.address }}</div>
+    <div>Tel: {{ user.assigned_location.phone_number }}</div>
+</div>
+
+<div class="print-divider"></div>
+
+<!-- Meta -->
+<div class="print-row">
+    <span>Inv: #{{ sale.invoice_number|slice:":8" }}</span>
+    <span>{{ sale.created_at|date:"d/m/y H:i" }}</span>
+</div>
+<div class="print-row">
+    <span>Cashier: {{ sale.cashier.username }}</span>
+</div>
+
+<div class="print-divider"></div>
+
+<!-- Items -->
+<div class="print-row print-bold">
+    <span style="flex:2;">Item</span>
+    <span style="flex:1; text-align: center;">Qty</span>
+    <span style="flex:1; text-align: right;">Total</span>
+</div>
+
+{% for item in sale.items.all %}
+<div style="margin-bottom: 2px;">
+    <div>{{ item.product.name }}</div>
+    <div class="print-row">
+        <span style="flex:2; font-size:10px;">@ {{ item.unit_price|intcomma }}</span>
+        <span style="flex:1; text-align: center;">{{ item.quantity }}</span>
+        <span style="flex:1; text-align: right;">{{ item.total_price|intcomma }}</span>
+    </div>
+</div>
+{% endfor %}
+
+<div class="print-divider"></div>
+
+<!-- Totals -->
+<div class="print-row">
+    <span>Subtotal:</span>
+    <span>{{ sale.subtotal|intcomma }}</span>
+</div>
+{% if sale.total_tax > 0 %}
+<div class="print-row">
+    <span>Tax:</span>
+    <span>{{ sale.total_tax|intcomma }}</span>
+</div>
+{% endif %}
+
+<div class="print-row print-bold print-lg" style="margin-top: 5px;">
+    <span>TOTAL:</span>
+    <span>{{ sale.total_amount|intcomma }}</span>
+</div>
+
+<div class="print-divider"></div>
+
+<!-- Payments -->
+{% for payment in sale.payments.all %}
+<div class="print-row">
+    <span>{{ payment.get_payment_method_display }}:</span>
+    <span>{{ payment.amount|intcomma }}</span>
+</div>
+{% endfor %}
+
+<div class="print-row print-bold">
+    <span>CHANGE:</span>
+    <span>{{ sale.change_due|intcomma }}</span>
+</div>
+
+<div class="print-divider"></div>
+
+<!-- Footer -->
+<div class="print-center" style="margin-top: 10px;">
+    <div>Thank you!</div>
+    <div style="font-size: 10px; margin-top: 5px;">Powered by DDT Technologies</div>
+</div>

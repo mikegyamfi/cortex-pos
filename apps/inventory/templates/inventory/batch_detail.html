@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Batch Detail | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Header -->
+    <div class="col-12 mb-4 d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-1 fw-bold">Stock Batch: {{ batch.batch_number|default:"N/A" }}</h4>
+            <span class="text-muted">Product: <strong>{{ batch.product.name }}</strong> ({{ batch.product.sku }})</span>
+        </div>
+        <a href="{% url 'inventory:dashboard' %}" class="btn btn-outline-secondary">
+            <i class="ri-arrow-go-back-line me-1"></i> Back to Inventory
+        </a>
+    </div>
+
+    <!-- Overview Cards -->
+    <div class="col-md-3 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <span class="text-muted d-block mb-1">Current Quantity</span>
+                <h3 class="mb-0 text-primary">{{ batch.quantity }} <small class="fs-6 text-muted">{{ batch.product.unit.symbol }}</small></h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <span class="text-muted d-block mb-1">Expiry Date</span>
+                {% if batch.expiry_date %}
+                    <h4 class="mb-0 {% if batch.days_to_expiry < 30 %}text-danger{% endif %}">
+                        {{ batch.expiry_date|date:"d M Y" }}
+                    </h4>
+                    <small>{{ batch.days_to_expiry }} days left</small>
+                {% else %}
+                    <h4 class="mb-0 text-success">N/A</h4>
+                    <small>Non-perishable</small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <span class="text-muted d-block mb-1">Total Sold</span>
+                <h4 class="mb-0 text-success">{{ total_sold }}</h4>
+                <small>Units sold from this batch</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <span class="text-muted d-block mb-1">Net Adjustments</span>
+                <h4 class="mb-0 {% if total_adjusted < 0 %}text-danger{% else %}text-info{% endif %}">
+                    {{ total_adjusted }}
+                </h4>
+                <small>Damages / Corrections</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Left Col: Details & Adjustments -->
+    <div class="col-lg-5 mb-4">
+        <!-- Batch Info -->
+        <div class="card mb-4">
+            <div class="card-header border-bottom">
+                <h5 class="card-title mb-0">Batch Information</h5>
+            </div>
+            <div class="card-body pt-4">
+                <ul class="list-unstyled mb-0">
+                    <li class="d-flex justify-content-between mb-3">
+                        <span class="fw-medium">Current Location:</span>
+                        <span>{{ batch.location.name }}</span>
+                    </li>
+                    <li class="d-flex justify-content-between mb-3">
+                        <span class="fw-medium">Supplier:</span>
+                        <span>{{ batch.supplier.name|default:"-" }}</span>
+                    </li>
+                    <li class="d-flex justify-content-between mb-3">
+                        <span class="fw-medium">Date Received:</span>
+                        <span>{{ batch.received_date|date:"d M Y H:i" }}</span>
+                    </li>
+                    <li class="d-flex justify-content-between mb-3">
+                        <span class="fw-medium">Cost Price:</span>
+                        <span>{{ batch.cost_price|intcomma }}</span>
+                    </li>
+                    <li class="d-flex justify-content-between">
+                        <span class="fw-medium">Manufactured:</span>
+                        <span>{{ batch.manufactured_date|date:"d M Y"|default:"-" }}</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Adjustment History -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Adjustments</h5>
+                <a href="{% url 'inventory:adjustments' %}" class="btn btn-sm btn-outline-primary">New Adjustment</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Reason</th>
+                            <th class="text-end">Qty</th>
+                            <th>User</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for adj in adjustments %}
+                        <tr>
+                            <td>{{ adj.created_at|date:"d M y" }}</td>
+                            <td><span class="badge bg-label-secondary">{{ adj.get_reason_display }}</span></td>
+                            <td class="text-end fw-bold {% if adj.adjusted_quantity < 0 %}text-danger{% else %}text-success{% endif %}">
+                                {{ adj.adjusted_quantity }}
+                            </td>
+                            <td>{{ adj.performed_by.username }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">No adjustments made.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Col: Sales History -->
+    <div class="col-lg-7 mb-4">
+        <div class="card h-100">
+            <div class="card-header border-bottom">
+                <h5 class="card-title mb-0">Sales History</h5>
+                <small class="text-muted">Items sold specifically from this batch (FEFO).</small>
+            </div>
+            <div class="table-responsive text-nowrap">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Invoice #</th>
+                            <th>Date</th>
+                            <th>Cashier</th>
+                            <th class="text-end">Qty Sold</th>
+                            <th class="text-end">Unit Price</th>
+                            <th class="text-end">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in sales_items %}
+                        <tr>
+                            <td>
+                                <a href="#" class="fw-bold">#{{ item.sale.invoice_number|slice:":8" }}...</a>
+                            </td>
+                            <td>{{ item.sale.created_at|date:"d M Y H:i" }}</td>
+                            <td>{{ item.sale.cashier.username }}</td>
+                            <td class="text-end">{{ item.quantity }}</td>
+                            <td class="text-end">{{ item.unit_price|intcomma }}</td>
+                            <td class="text-end fw-bold">{{ item.total_price|intcomma }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center py-5">
+                                <div class="text-muted">
+                                    <i class="ri-shopping-cart-line ri-2x mb-2"></i>
+                                    <p class="mb-0">No sales yet from this batch.</p>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

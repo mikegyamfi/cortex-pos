@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Sales History | Retail POS{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header border-bottom">
+        <h5 class="mb-3">Transaction History</h5>
+
+        <!-- Filter Form -->
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Search</label>
+                <div class="input-group input-group-merge">
+                    <span class="input-group-text"><i class="ri-search-line"></i></span>
+                    <input type="text" class="form-control" name="q" value="{{ filters.q|default:'' }}" placeholder="Invoice # or Phone...">
+                </div>
+            </div>
+
+            {% if user.role == 'OWNER' %}
+            <div class="col-md-2">
+                <label class="form-label">Location</label>
+                <select name="location" class="form-select">
+                    <option value="">All Locations</option>
+                    {% for loc in locations %}
+                    <option value="{{ loc.id }}" {% if filters.location == loc.id|stringformat:"s" %}selected{% endif %}>{{ loc.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+
+            <div class="col-md-2">
+                <label class="form-label">Type / Status</label>
+                <select name="status" class="form-select">
+                    <option value="">All Types</option>
+                    <option value="DEBT" {% if filters.status == 'DEBT' %}selected{% endif %} style="color:red; font-weight:bold;">Unpaid / Debt</option>
+                    <option value="DELIVERY" {% if filters.status == 'DELIVERY' %}selected{% endif %}>Deliveries</option>
+                    <option value="REFUNDED" {% if filters.status == 'REFUNDED' %}selected{% endif %}>Refunds</option>
+                    <option value="COMPLETED" {% if filters.status == 'COMPLETED' %}selected{% endif %}>Completed Sales</option>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">From Date</label>
+                <input type="date" class="form-control" name="start_date" value="{{ filters.start_date|default:'' }}">
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">To Date</label>
+                <input type="date" class="form-control" name="end_date" value="{{ filters.end_date|default:'' }}">
+            </div>
+
+            <div class="col-md-1 d-flex gap-2">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="ri-filter-3-line"></i>
+                </button>
+                <a href="{% url 'sales:list' %}" class="btn btn-outline-secondary" title="Reset Filters">
+                    <i class="ri-refresh-line"></i>
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="table-responsive text-nowrap">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Invoice #</th>
+                    <th>Date & Time</th>
+                    <th>Customer</th>
+                    {% if user.role == 'OWNER' %}<th>Location</th>{% endif %}
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sale in sales %}
+                <tr>
+                    <td>
+                        <a href="{% url 'sales:detail' sale.pk %}" class="fw-bold text-primary">#{{ sale.invoice_number|slice:":8" }}</a>
+                    </td>
+                    <td>
+                        {{ sale.created_at|date:"d M Y" }}
+                        <small class="text-muted d-block">{{ sale.created_at|date:"H:i" }}</small>
+                    </td>
+                    <td>
+                        {% if sale.customer %}
+                            <div class="d-flex flex-column">
+                                <span class="fw-medium">{{ sale.customer.get_display_name }}</span>
+                                <small class="text-muted">{{ sale.customer.phone_number }}</small>
+                            </div>
+                        {% else %}
+                            <span class="text-muted">Guest</span>
+                        {% endif %}
+                    </td>
+                    {% if user.role == 'OWNER' %}
+                    <td><span class="badge bg-label-secondary">{{ sale.location.name }}</span></td>
+                    {% endif %}
+                    <td>
+                        {% if sale.order_type == 'DELIVERY' %}
+                            <span class="badge bg-label-info"><i class="ri-motorbike-line me-1"></i> Delivery</span>
+                            {% if sale.delivery_details %}
+                                <br><small class="text-xs text-muted">{{ sale.delivery_details.get_status_display }}</small>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge bg-label-secondary">In-Store</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex flex-column">
+                            <span class="fw-bold">{{ sale.total_amount|intcomma }}</span>
+                            {% if sale.balance_remaining > 0 %}
+                                <span class="badge bg-danger rounded-pill">Due: {{ sale.balance_remaining|intcomma }}</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        {% if sale.status == 'COMPLETED' %}
+                            <span class="badge bg-label-success">Completed</span>
+                        {% elif sale.status == 'PENDING' %}
+                            <span class="badge bg-label-warning">Pending</span>
+                        {% elif sale.status == 'CANCELLED' %}
+                            <span class="badge bg-label-secondary">Cancelled</span>
+                        {% elif sale.status == 'REFUNDED' %}
+                            <span class="badge bg-label-danger">Refunded</span>
+                        {% else %}
+                            <span class="badge bg-label-info">{{ sale.get_status_display }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="dropdown">
+                            <button type="button" class="btn p-0 dropdown-toggle hide-arrow" data-bs-toggle="dropdown">
+                                <i class="ri ri-more-2-line"></i>
+                            </button>
+                            <div class="dropdown-menu">
+                                <a class="dropdown-item" href="{% url 'sales:detail' sale.pk %}">
+                                    <i class="ri-file-list-3-line me-1"></i> View Receipt
+                                </a>
+
+                                {% if sale.order_type == 'DELIVERY' %}
+                                <a class="dropdown-item text-info" href="#">
+                                    <i class="ri-map-pin-user-line me-1"></i> Manage Delivery
+                                </a>
+                                {% endif %}
+
+                                {% if sale.balance_remaining > 0 %}
+                                <a class="dropdown-item text-danger" href="{% url 'sales:detail' sale.pk %}">
+                                    <i class="ri-hand-coin-line me-1"></i> Settle Debt
+                                </a>
+                                {% endif %}
+
+                                {% if user.role == 'MANAGER' or user.role == 'OWNER' %}
+                                <a class="dropdown-item" href="#">
+                                    <i class="ri-refund-2-line me-1"></i> Refund
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="{% if user.role == 'OWNER' %}8{% else %}7{% endif %}" class="text-center py-5">
+                        <div class="text-muted">
+                            <i class="ri-bill-line ri-3x mb-3"></i>
+                            <p>No transactions found matching your criteria.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

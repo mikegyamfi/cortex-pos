@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+{% load crispy_forms_filters %}
+{% load static crispy_forms_tags %}
+
+{% block title %}{{ title }} | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">{{ title }}</h5>
+                <a href="{% url 'products:product_list' %}" class="btn btn-outline-secondary">
+                    <i class="ri-arrow-go-back-line me-1"></i> Cancel
+                </a>
+            </div>
+
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+
+                    <div class="row">
+                        <!-- Left Column: Core Info -->
+                        <div class="col-md-8">
+                            <h6 class="fw-bold text-muted mb-3">Basic Information</h6>
+                            <div class="row g-3">
+                                <div class="col-md-12">
+                                    {{ form.name|as_crispy_field }}
+                                </div>
+                                <div class="col-md-12">
+                                    {{ form.description|as_crispy_field }}
+                                </div>
+                            </div>
+
+                            <h6 class="fw-bold text-muted mt-4 mb-3">Classification</h6>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Category</label>
+                                    <div class="input-group">
+                                        {{ form.category }}
+                                        <!-- Quick Add Button -->
+                                        <button class="btn btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#categoryModal">
+                                            <i class="ri-add-line"></i> Add
+                                        </button>
+                                    </div>
+                                    {% if form.category.errors %}
+                                        <div class="text-danger small mt-1">{{ form.category.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-4">
+                                    {{ form.brand|as_crispy_field }}
+                                </div>
+                                <div class="col-md-4">
+                                    {{ form.unit|as_crispy_field }}
+                                </div>
+                            </div>
+
+                            <h6 class="fw-bold text-muted mt-4 mb-3">Pricing & Tax</h6>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    {{ form.cost_price|as_crispy_field }}
+                                </div>
+                                <div class="col-md-4">
+                                    {{ form.selling_price|as_crispy_field }}
+                                </div>
+                                <div class="col-md-4">
+                                    {{ form.wholesale_price|as_crispy_field }}
+                                </div>
+                                <div class="col-md-4">
+                                    {{ form.tax_rate|as_crispy_field }}
+                                    <small class="text-muted">Specific sales tax % for this item (optional).</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Settings & Logistics -->
+                        <div class="col-md-4">
+                            <div class="p-3 bg-lighter rounded">
+                                <h6 class="fw-bold text-muted mb-3">Inventory Identifiers</h6>
+                                {{ form.sku|as_crispy_field }}
+                                {{ form.barcode|as_crispy_field }}
+                                <small class="text-muted d-block mb-3">Scan barcode to autofill if scanner is connected.</small>
+
+                                <h6 class="fw-bold text-muted mt-4 mb-3">Logistics & Location</h6>
+                                <div class="row g-2">
+                                    <div class="col-12">
+                                        {{ form.shelf_location|as_crispy_field }}
+                                    </div>
+                                    <div class="col-6">
+                                        {{ form.weight_kg|as_crispy_field }}
+                                    </div>
+                                    <div class="col-6">
+                                        {{ form.dimensions|as_crispy_field }}
+                                    </div>
+                                </div>
+
+                                <h6 class="fw-bold text-muted mt-4 mb-3">Stock Settings</h6>
+                                {{ form.low_stock_threshold|as_crispy_field }}
+
+                                <div class="form-check form-switch mt-3">
+                                    {{ form.is_perishable }}
+                                    <label class="form-check-label" for="{{ form.is_perishable.id_for_label }}">Perishable (Has Expiry)</label>
+                                </div>
+
+                                <div class="form-check form-switch mt-2">
+                                    {{ form.is_returnable }}
+                                    <label class="form-check-label" for="{{ form.is_returnable.id_for_label }}">Returnable Item</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-top">
+                        <button type="submit" class="btn btn-primary me-2">Save Product</button>
+                        <button type="reset" class="btn btn-outline-secondary">Reset</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="categoryModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <!-- We load the partial here -->
+      {% include 'products/partials/category_form.html' with form=category_form %}
+    </div>
+  </div>
+</div>
+{% endblock %}

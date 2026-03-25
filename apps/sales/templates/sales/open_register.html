@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Open Register | Retail POS{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Full-screen wrapper adjustment */
+    .content-wrapper {
+        overflow: hidden; /* Prevent scrolling on the main wrapper */
+    }
+    .register-container {
+        height: calc(100vh - 100px); /* Subtract approximate navbar height */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding-bottom: 20px;
+    }
+    .register-card {
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        border: none;
+        border-radius: 16px;
+        width: 100%;
+        max-width: 420px; /* Constrain width */
+        display: flex;
+        flex-direction: column;
+        max-height: 100%; /* Ensure it doesn't overflow parent */
+    }
+    .card-body {
+        overflow-y: auto; /* Allow internal scroll only if absolutely needed on tiny screens */
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    /* Compact Keypad Styles */
+    .pos-keypad-btn {
+        height: 50px; /* Reduced from 60px */
+        font-size: 1.25rem;
+        font-weight: 500;
+        border-radius: 10px;
+        transition: all 0.1s active;
+    }
+    .pos-keypad-btn:active {
+        transform: scale(0.95);
+        background-color: #e9ecef;
+    }
+    .display-screen {
+        background-color: #f8f9fa;
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        font-family: 'Courier New', monospace;
+    }
+    /* Hide number spinners */
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="register-container">
+    <div class="card register-card">
+        <!-- Compact Header -->
+        <div class="card-header text-center py-3 border-bottom-0">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="d-flex align-items-center">
+                    <span class="avatar-initial rounded bg-label-primary p-1 me-2">
+                        <i class="ri-store-3-line ri-lg"></i>
+                    </span>
+                    <div class="text-start">
+                        <h5 class="mb-0 text-primary">Start Shift</h5>
+                        <small class="text-muted">{{ user.assigned_location.name }}</small>
+                    </div>
+                </div>
+                <div class="badge bg-label-secondary">
+                    {% now "d M Y" %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Input & Keypad Section -->
+        <div class="card-body py-2">
+            <form method="post" id="openRegisterForm" class="h-100 d-flex flex-column justify-content-between">
+                {% csrf_token %}
+
+                <div class="text-center mb-3">
+                    <label for="opening_balance" class="form-label text-uppercase fw-bold text-muted small mb-1">Opening Float</label>
+                    <div class="display-screen p-2 d-flex align-items-center justify-content-between">
+                        <span class="fs-4 text-muted fw-bold ps-2">GHS</span>
+                        <input type="number"
+                               step="0.01"
+                               class="form-control form-control-lg border-0 bg-transparent text-end fs-2 fw-bold p-0 shadow-none text-primary"
+                               id="opening_balance"
+                               name="opening_balance"
+                               placeholder="0.00"
+                               required
+                               autocomplete="off">
+                    </div>
+                </div>
+
+                <!-- Numeric Keypad -->
+                <div class="row g-2 mb-3">
+                    <div class="col-4"><button type="button" class="btn btn-outline-secondary w-100 pos-keypad-btn" onclick="appendNumber('1')">1</button></div>
+                    <div class="col-4"><button type="button" class="btn btn-outline-secondary w-100 pos-keypad-btn" onclick="appendNumber('2')">2</button></div>
+                    <div class="col-4"><button type="button" class="btn btn-outline-secondary w-100 pos-keypad-btn" onclick="appendNumber('3')">3</button></div>
+
+                    <div class="col-4"><button type="button" class="btn btn-outline-secondary w-100 pos-keypad-btn" onclick="appendNumber('4')">4</button></div>
+                    <div class="col-4"><button type="button" class="btn btn-outline-secondary w-100 pos-keypad-btn" onclick="appendNumber('5')">5</button></div>
+                    <div class="col-4"><button type="button" class="btn btn-outline-secondary w-100 pos-keypad-btn" onclick="appendNumber('6')">6</button></div>
+
+                    <div class="col-4"><button type="button" class="btn btn-outline-secondary w-100 pos-keypad-btn" onclick="appendNumber('7')">7</button></div>
+                    <div class="col-4"><button type="button" class="btn btn-outline-secondary w-100 pos-keypad-btn" onclick="appendNumber('8')">8</button></div>
+                    <div class="col-4"><button type="button" class="btn btn-outline-secondary w-100 pos-keypad-btn" onclick="appendNumber('9')">9</button></div>
+
+                    <div class="col-4"><button type="button" class="btn btn-outline-danger w-100 pos-keypad-btn" onclick="clearInput()"><i class="ri-delete-back-2-line"></i></button></div>
+                    <div class="col-4"><button type="button" class="btn btn-outline-secondary w-100 pos-keypad-btn" onclick="appendNumber('0')">0</button></div>
+                    <div class="col-4"><button type="button" class="btn btn-outline-secondary w-100 pos-keypad-btn" onclick="appendDot()">.</button></div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-lg w-100 py-2 rounded-pill fw-bold shadow-sm">
+                    Open Register
+                </button>
+            </form>
+        </div>
+
+        <!-- Compact Footer -->
+        <div class="card-footer py-2 text-center bg-lighter border-top">
+            <small class="text-muted"><i class="ri-user-line me-1"></i> {{ user.get_full_name|default:user.username }}</small>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const inputField = document.getElementById('opening_balance');
+
+    // Function to handle number clicks
+    function appendNumber(num) {
+        if (inputField.value === '') {
+            inputField.value = num;
+        } else {
+            inputField.value += num;
+        }
+    }
+
+    // Function to handle dot
+    function appendDot() {
+        if (!inputField.value.includes('.')) {
+            inputField.value += '.';
+        } else if (inputField.value === '') {
+            inputField.value = '0.';
+        }
+    }
+
+    // Function to handle backspace
+    function clearInput() {
+        let currentVal = inputField.value;
+        if (currentVal.length > 0) {
+            inputField.value = currentVal.slice(0, -1);
+        }
+    }
+
+    // Listen for physical keyboard events
+    document.addEventListener('keydown', function(event) {
+        if (document.activeElement !== inputField) {
+            if (/[0-9]/.test(event.key)) {
+                appendNumber(event.key);
+            } else if (event.key === '.') {
+                appendDot();
+            } else if (event.key === 'Backspace') {
+                clearInput();
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                document.getElementById('openRegisterForm').submit();
+            }
+        }
+    });
+</script>
+{% endblock %}

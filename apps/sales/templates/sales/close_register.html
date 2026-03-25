@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Close Register | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">End Shift / Close Register</h5>
+                <span class="badge bg-label-primary">Shift ID: #{{ session.id }}</span>
+            </div>
+
+            <div class="card-body">
+                <div class="alert alert-warning mb-4">
+                    <h6 class="alert-heading mb-1"><i class="ri-alert-line me-1"></i> Shift Summary</h6>
+                    <p class="mb-0">You are about to close the register for <strong>{{ user.username }}</strong>.</p>
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-6">
+                        <div class="p-3 border rounded bg-lightest">
+                            <small class="text-muted d-block text-uppercase">Opening Float</small>
+                            <h5 class="mb-0">{{ session.opening_balance|intcomma }}</h5>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="p-3 border rounded bg-lightest">
+                            <small class="text-muted d-block text-uppercase">Cash Sales</small>
+                            <h5 class="mb-0 text-success">+ {{ session.total_cash_sales|intcomma }}</h5>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="p-3 border rounded bg-label-secondary d-flex justify-content-between align-items-center">
+                            <span class="fw-bold">Expected Cash in Drawer:</span>
+                            <h4 class="mb-0 text-primary">{{ expected_cash|intcomma }}</h4>
+                        </div>
+                    </div>
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <h6 class="fw-bold text-muted mb-3">Reconciliation</h6>
+
+                    <div class="form-floating form-floating-outline mb-4">
+                        <input type="number" step="0.01" class="form-control form-control-lg fw-bold fs-4" id="actual_cash" name="actual_cash" placeholder="0.00" required>
+                        <label for="actual_cash">Actual Cash Counted</label>
+                        <div class="form-text">Count the physical money in the drawer and enter the total.</div>
+                    </div>
+
+                    <div class="form-floating form-floating-outline mb-4">
+                        <textarea class="form-control h-px-100" id="notes" name="notes" placeholder="Notes"></textarea>
+                        <label for="notes">Notes / Remarks</label>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-danger btn-lg">
+                            <i class="ri-shut-down-line me-1"></i> Close Register & Logout
+                        </button>
+                        <a href="{% url 'sales:pos' %}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

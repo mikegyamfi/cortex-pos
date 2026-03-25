@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}{{ customer.get_display_name }} | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Left: Profile -->
+    <div class="col-xl-4 col-lg-5 col-md-5 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <div class="avatar avatar-xl mx-auto mb-3">
+                    <span class="avatar-initial rounded-circle bg-label-primary fs-3">
+                        {{ customer.first_name|slice:":1" }}{{ customer.last_name|slice:":1" }}
+                    </span>
+                </div>
+                <h4 class="mb-1">{{ customer.get_display_name }}</h4>
+                <p class="text-muted mb-4">{{ customer.phone_number }}</p>
+
+                <div class="d-flex justify-content-around flex-wrap gap-2 mb-4">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="avatar">
+                            <span class="avatar-initial rounded bg-label-primary"><i class="ri-money-dollar-circle-line"></i></span>
+                        </div>
+                        <div>
+                            <h6 class="mb-0">{{ stats.total_spent|default:0|intcomma }}</h6>
+                            <small>Spent</small>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="avatar">
+                            <span class="avatar-initial rounded bg-label-success"><i class="ri-shopping-bag-3-line"></i></span>
+                        </div>
+                        <div>
+                            <h6 class="mb-0">{{ stats.visit_count|default:0 }}</h6>
+                            <small>Visits</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-container text-start">
+                    <ul class="list-unstyled mb-0">
+                        <li class="mb-3">
+                            <span class="fw-medium text-heading me-2">Email:</span>
+                            <span>{{ customer.email|default:"-" }}</span>
+                        </li>
+                        <li class="mb-3">
+                            <span class="fw-medium text-heading me-2">Address:</span>
+                            <span>{{ customer.address|default:"-" }}</span>
+                        </li>
+                        <li class="mb-3">
+                            <span class="fw-medium text-heading me-2">Last Visit:</span>
+                            <span>{{ customer.last_visit_date|date:"d M Y"|default:"Never" }}</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="d-flex justify-content-center pt-3 border-top mt-4">
+                    <a href="{% url 'customers:edit' customer.pk %}" class="btn btn-primary me-3">Edit Details</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Purchase History -->
+    <div class="col-xl-8 col-lg-7 col-md-7 mb-4">
+        <div class="card h-100">
+            <div class="card-header border-bottom">
+                <h5 class="card-title mb-0">Recent Purchases</h5>
+            </div>
+            <div class="table-responsive text-nowrap">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Invoice #</th>
+                            <th>Date</th>
+                            <th>Cashier</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sale in purchases %}
+                        <tr>
+                            <td><a href="{% url 'sales:detail' sale.pk %}">#{{ sale.invoice_number|slice:":8" }}</a></td>
+                            <td>{{ sale.created_at|date:"d M Y" }}</td>
+                            <td>{{ sale.cashier.username }}</td>
+                            <td class="fw-bold">{{ sale.total_amount|intcomma }}</td>
+                            <td><span class="badge bg-label-success">Paid</span></td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center py-4">No purchases yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

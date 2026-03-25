@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Product Catalog | Retail POS{% endblock %}
+
+{% block content %}
+<div class="card">
+  <!-- Header & Filters -->
+  <div class="card-header border-bottom">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h5 class="mb-0">Product Catalog</h5>
+        <a href="{% url 'products:product_create' %}" class="btn btn-primary">
+            <i class="ri-add-line me-1"></i> Add Product
+        </a>
+    </div>
+
+    <!-- Filter Form -->
+    <form method="get" class="row g-3">
+        <div class="col-md-3">
+            <div class="input-group input-group-merge">
+                <span class="input-group-text"><i class="ri-search-line"></i></span>
+                <input type="text" class="form-control" placeholder="Search..." name="q" value="{{ query }}">
+            </div>
+        </div>
+
+        <div class="col-md-2">
+            <select name="category" class="form-select">
+                <option value="">All Categories</option>
+                {% for cat in categories %}
+                <option value="{{ cat.id }}" {% if selected_category == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-2">
+            <select name="brand" class="form-select">
+                <option value="">All Brands</option>
+                {% for brand in brands %}
+                <option value="{{ brand.id }}" {% if selected_brand == brand.id %}selected{% endif %}>{{ brand.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-2">
+            <select name="status" class="form-select">
+                <option value="">Any Status</option>
+                <option value="active" {% if selected_status == 'active' %}selected{% endif %}>Active</option>
+                <option value="inactive" {% if selected_status == 'inactive' %}selected{% endif %}>Inactive</option>
+            </select>
+        </div>
+
+        {% if user.role == 'OWNER' %}
+        <div class="col-md-2">
+            <select name="location" class="form-select bg-label-primary">
+                <option value="">All Locations</option>
+                {% for loc in locations %}
+                <option value="{{ loc.id }}" {% if selected_location == loc.id %}selected{% endif %}>In Stock @ {{ loc.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <div class="col-md-1">
+            <button type="submit" class="btn btn-outline-primary w-100"><span class="ri--filter-2-line"></span>Filter</button>
+        </div>
+    </form>
+  </div>
+
+  <!-- Table -->
+  <div class="table-responsive text-nowrap">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Category</th>
+          <th>SKU / Barcode</th>
+          <th>Cost</th>
+          <th>Price</th>
+          <th>Status</th>
+          <th class="text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="table-border-bottom-0">
+        {% for product in page_obj %}
+        <tr>
+          <td>
+            <div class="d-flex align-items-center">
+                <div class="avatar me-3">
+                    {% if product.images.first %}
+                        <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}" class="rounded-circle" />
+                    {% else %}
+                        <span class="avatar-initial rounded-circle bg-label-primary">{{ product.name|slice:":2"|upper }}</span>
+                    {% endif %}
+                </div>
+                <div>
+                    <a href="{% url 'products:product_detail' product.pk %}" class="fw-bold text-heading">{{ product.name }}</a>
+                    {% if product.brand %}
+                    <br><small class="text-muted">{{ product.brand.name }}</small>
+                    {% endif %}
+                </div>
+            </div>
+          </td>
+          <td>{{ product.category.name|default:"-" }}</td>
+          <td>
+            <div class="d-flex flex-column">
+                <span class="badge bg-label-secondary mb-1">{{ product.sku }}</span>
+                {% if product.barcode %}
+                <small class="text-muted"><i class="ri-barcode-line"></i> {{ product.barcode }}</small>
+                {% endif %}
+            </div>
+          </td>
+          <td>{{ product.cost_price|intcomma }}</td>
+          <td><strong>{{ product.selling_price|intcomma }}</strong></td>
+          <td>
+            {% if product.is_active %}
+                <span class="badge bg-label-success me-1">Active</span>
+            {% else %}
+                <span class="badge bg-label-danger me-1">Inactive</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            <!-- Explicit Action Buttons with Text -->
+            <div class="d-inline-flex gap-1">
+                <a href="{% url 'products:product_detail' product.pk %}" class="btn btn-sm btn-outline-info" title="View Details">
+                    <i class="ri-eye-line me-1"></i> View
+                </a>
+                <a href="{% url 'products:product_edit' product.pk %}" class="btn btn-sm btn-outline-primary" title="Edit">
+                    <i class="ri-pencil-line me-1"></i> Edit
+                </a>
+                {% if user.role == 'OWNER' %}
+                <a href="javascript:void(0);" class="btn btn-sm btn-outline-danger" title="Delete">
+                    <i class="fa fa-recycle"></i>
+                </a>
+                {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="7" class="text-center py-5">
+                <div class="text-muted">
+                    <i class="ri-search-2-line ri-3x mb-3"></i>
+                    <p>No products found matching your criteria.</p>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  {% if page_obj.has_other_pages %}
+  <div class="card-footer d-flex justify-content-center">
+    <nav aria-label="Page navigation">
+      <ul class="pagination">
+        {% if page_obj.has_previous %}
+        <li class="page-item first">
+          <a class="page-link" href="?page=1{% if query %}&q={{ query }}{% endif %}"><i class="ri-skip-back-mini-line"></i></a>
+        </li>
+        <li class="page-item prev">
+          <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if query %}&q={{ query }}{% endif %}"><i class="ri-arrow-left-s-line"></i></a>
+        </li>
+        {% endif %}
+
+        <li class="page-item active">
+            <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+        </li>
+
+        {% if page_obj.has_next %}
+        <li class="page-item next">
+          <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if query %}&q={{ query }}{% endif %}"><i class="ri-arrow-right-s-line"></i></a>
+        </li>
+        <li class="page-item last">
+          <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if query %}&q={{ query }}{% endif %}"><i class="ri-skip-forward-mini-line"></i></a>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

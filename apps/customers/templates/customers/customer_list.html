@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Customers | Retail POS{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Customer Database</h5>
+        <a href="{% url 'customers:create' %}" class="btn btn-primary">
+            <i class="ri-user-add-line me-1"></i> Add Customer
+        </a>
+    </div>
+
+    <!-- Search -->
+    <div class="card-body border-bottom">
+        <form method="get" class="row g-3">
+            <div class="col-md-10">
+                <div class="input-group input-group-merge">
+                    <span class="input-group-text"><i class="ri-search-line"></i></span>
+                    <input type="text" class="form-control" name="q" value="{{ query }}" placeholder="Search by name, phone, or email...">
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100">Search</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="table-responsive text-nowrap">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th>Contact Info</th>
+                    <th>Visits</th>
+                    <th>Total Spent</th>
+                    <th>Last Visit</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for customer in page_obj %}
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="avatar avatar-sm me-2">
+                                <span class="avatar-initial rounded-circle bg-label-primary">
+                                    {{ customer.first_name|slice:":1" }}{{ customer.last_name|slice:":1" }}
+                                </span>
+                            </div>
+                            <div>
+                                <a href="{% url 'customers:detail' customer.pk %}" class="fw-bold text-heading">
+                                    {{ customer.get_display_name }}
+                                </a>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex flex-column">
+                            <span class="mb-1"><i class="ri-phone-line me-1 text-muted"></i> {{ customer.phone_number }}</span>
+                            {% if customer.email %}
+                            <small class="text-muted"><i class="ri-mail-line me-1"></i> {{ customer.email }}</small>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>{{ customer.total_visits }}</td>
+                    <td class="fw-bold text-primary">{{ customer.total_spent|intcomma }}</td>
+                    <td>
+                        {% if customer.last_visit_date %}
+                            {{ customer.last_visit_date|date:"d M Y" }}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'customers:edit' customer.pk %}" class="btn btn-sm btn-icon btn-text-secondary rounded-pill">
+                            <i class="ri-pencil-line"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center py-5">
+                        <div class="text-muted">
+                            <i class="ri-user-search-line ri-3x mb-3"></i>
+                            <p>No customers found.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="card-footer d-flex justify-content-center">
+        <nav aria-label="Page navigation">
+            <ul class="pagination">
+                {% if page_obj.has_previous %}
+                <li class="page-item prev">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if query %}&q={{ query }}{% endif %}"><i class="ri-arrow-left-s-line"></i></a>
+                </li>
+                {% endif %}
+                <li class="page-item active">
+                    <span class="page-link">{{ page_obj.number }}</span>
+                </li>
+                {% if page_obj.has_next %}
+                <li class="page-item next">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if query %}&q={{ query }}{% endif %}"><i class="ri-arrow-right-s-line"></i></a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

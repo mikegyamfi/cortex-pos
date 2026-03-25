@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+
+{% block title %}Staff Management | Retail POS{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Staff & Users</h5>
+        {% if user.role == 'OWNER' %}
+        <a href="{% url 'users:create' %}" class="btn btn-primary">
+            <i class="ri-user-add-line me-1"></i> Add New Staff
+        </a>
+        {% endif %}
+    </div>
+
+    <div class="table-responsive text-nowrap">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Assigned Location</th>
+                    <th>Contact</th>
+                    <th>Status</th>
+                    {% if user.role == 'OWNER' %}
+                    <th>Actions</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for staff_member in staff %}
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="avatar avatar-sm me-3">
+                                <span class="avatar-initial rounded-circle bg-label-primary">
+                                    {{ staff_member.username|slice:":2"|upper }}
+                                </span>
+                            </div>
+                            <div>
+                                <span class="fw-bold text-heading">{{ staff_member.get_full_name|default:staff_member.username }}</span>
+                                <br><small class="text-muted">@{{ staff_member.username }}</small>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge bg-label-info">{{ staff_member.get_role_display }}</span>
+                    </td>
+                    <td>
+                        {% if staff_member.assigned_location %}
+                            <i class="ri-store-2-line text-muted me-1"></i> {{ staff_member.assigned_location.name }}
+                        {% else %}
+                            <span class="text-muted fst-italic">Global / Unassigned</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ staff_member.phone_number|default:"-" }}<br>
+                        <small class="text-muted">{{ staff_member.email|default:"" }}</small>
+                    </td>
+                    <td>
+                        {% if staff_member.is_active %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-danger">Disabled</span>
+                        {% endif %}
+
+                        {% if staff_member.requires_password_change %}
+                            <i class="ri-error-warning-fill text-warning ms-1" title="Pending Password Change"></i>
+                        {% endif %}
+                    </td>
+                    {% if user.role == 'OWNER' %}
+                    <td>
+                        <a href="{% url 'users:edit' staff_member.pk %}" class="btn btn-sm btn-icon btn-text-secondary rounded-pill" title="Edit Staff">
+                            <i class="ri-pencil-line"></i>
+                        </a>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center py-5 text-muted">No staff found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

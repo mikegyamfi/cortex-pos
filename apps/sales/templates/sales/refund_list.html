@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Returns & Refunds | Retail POS{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 text-danger">Returns & Refunds History</h5>
+        <!-- Optional Date Filter could go here -->
+    </div>
+
+    <div class="table-responsive text-nowrap">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Invoice #</th>
+                    <th>Date Processed</th>
+                    <th>Customer</th>
+                    <th>Original Amount</th>
+                    <th>Type</th>
+                    <th>Processed By</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sale in refunds %}
+                <tr>
+                    <td>
+                        <a href="{% url 'sales:detail' sale.pk %}" class="fw-bold">#{{ sale.invoice_number|slice:":8" }}</a>
+                    </td>
+                    <td>
+                        {{ sale.updated_at|date:"d M Y" }}
+                        <small class="text-muted d-block">{{ sale.updated_at|date:"H:i" }}</small>
+                    </td>
+                    <td>
+                        {% if sale.customer %}
+                            {{ sale.customer.get_display_name }}
+                        {% else %}
+                            <span class="text-muted">Guest</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ sale.total_amount|intcomma }}</td>
+                    <td>
+                        {% if sale.status == 'REFUNDED' %}
+                            <span class="badge bg-label-danger">Full Refund</span>
+                        {% else %}
+                            <span class="badge bg-label-warning">Partial Refund</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <!-- Assuming the cashier who processed it is the one logged on the sale,
+                             or ideally we track 'refunded_by' in a log. For now showing Sale Cashier -->
+                        {{ sale.cashier.username }}
+                    </td>
+                    <td>
+                        <a href="{% url 'sales:detail' sale.pk %}" class="btn btn-sm btn-outline-secondary">
+                            View Details
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center py-5">
+                        <div class="text-muted">
+                            <i class="ri-refund-2-line ri-3x mb-3"></i>
+                            <p>No refunds recorded.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

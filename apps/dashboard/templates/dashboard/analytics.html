@@ -1,0 +1,282 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Analytics Overview | Retail POS{% endblock %}
+
+{% block extra_css %}
+<!-- Page specific CSS -->
+<style>
+    .card-separator {
+        border-right: 1px solid #e6e6e8;
+    }
+    @media (max-width: 991.98px) {
+        .card-separator {
+            border-right: none;
+            border-bottom: 1px solid #e6e6e8;
+            padding-bottom: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row gy-4">
+    <!-- Header & Context Switcher -->
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="fw-bold mb-0">Dashboard Overview</h4>
+            <p class="mb-0 text-muted"> viewing data for: <span class="badge bg-label-primary">{{ view_name }}</span></p>
+        </div>
+
+        <div class="btn-group">
+            <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="ri-store-2-line me-1"></i> Switch Location
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item {% if not selected_location_id %}active{% endif %}" href="{% url 'dashboard:analytics' %}">All Locations</a></li>
+                <li><hr class="dropdown-divider"></li>
+                {% for loc in locations %}
+                <li>
+                    <a class="dropdown-item {% if selected_location_id == loc.id %}active{% endif %}"
+                       href="{% url 'dashboard:analytics' %}?location={{ loc.id }}">
+                        {{ loc.name }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <!-- Critical Alerts (Only show if needed) -->
+    {% if low_stock_count > 0 %}
+    <div class="col-12">
+        <div class="alert alert-danger d-flex align-items-center" role="alert">
+            <i class="ri-alarm-warning-line me-2"></i>
+            <div>
+                <strong>Action Required:</strong> You have {{ low_stock_count }} items running low on stock.
+                <a href="{% url 'inventory:dashboard' %}" class="alert-link">View Inventory</a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 1. The Big Numbers (Top Row) -->
+    <div class="col-xl-12">
+        <div class="card h-100">
+            <div class="card-body row g-4">
+                <div class="col-md-3 card-separator">
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="avatar me-4">
+                            <div class="avatar-initial bg-label-primary rounded shadow-xs">
+                                <i class="ri-money-dollar-circle-line ri-24px"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <h5 class="mb-0 fw-bold">{{ revenue|intcomma }}</h5>
+                            <small class="text-muted">Today's Revenue</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3 card-separator">
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="avatar me-4">
+                            <div class="avatar-initial bg-label-success rounded shadow-xs">
+                                <i class="ri-funds-line ri-24px"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <h5 class="mb-0 fw-bold">{{ profit|intcomma }}</h5>
+                            <small class="text-muted">Est. Gross Profit</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3 card-separator">
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="avatar me-4">
+                            <div class="avatar-initial bg-label-info rounded shadow-xs">
+                                <i class="ri-bill-line ri-24px"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <h5 class="mb-0 fw-bold">{{ transactions }}</h5>
+                            <small class="text-muted">Transactions</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="avatar me-4">
+                            <div class="avatar-initial bg-label-warning rounded shadow-xs">
+                                <i class="ri-wallet-3-line ri-24px"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <h5 class="mb-0 fw-bold">{{ cash_in_hand|intcomma }}</h5>
+                            <small class="text-muted">Cash in Drawers</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Charts & Payment Breakdown -->
+    <div class="col-xl-8 col-lg-7">
+        <div class="card h-100">
+            <div class="card-header">
+                <div class="d-flex justify-content-between mb-3">
+                    <h5 class="card-title mb-0">Revenue Trend</h5>
+                    <small class="text-muted">Last 7 Days</small>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="revenueChart"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-4 col-lg-5">
+        <div class="card h-100">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5 class="card-title m-0 me-2">Today's Payments</h5>
+            </div>
+            <div class="card-body">
+                <div id="paymentChart"></div>
+
+                <ul class="p-0 m-0 mt-4">
+                    <li class="d-flex mb-4 pb-1">
+                        <div class="avatar flex-shrink-0 me-3">
+                            <span class="avatar-initial rounded bg-label-primary"><i class="ri-money-dollar-box-line"></i></span>
+                        </div>
+                        <div class="d-flex w-100 flex-wrap align-items-center justify-content-between gap-2">
+                            <div class="me-2">
+                                <h6 class="mb-0">Cash Payments</h6>
+                                <small class="text-muted">Physical Cash</small>
+                            </div>
+                            <div class="user-progress">
+                                <h6 class="mb-0">{{ cash_in_hand|intcomma }}</h6>
+                            </div>
+                        </div>
+                    </li>
+                    <li class="d-flex mb-4 pb-1">
+                        <div class="avatar flex-shrink-0 me-3">
+                            <span class="avatar-initial rounded bg-label-success"><i class="ri-smartphone-line"></i></span>
+                        </div>
+                        <div class="d-flex w-100 flex-wrap align-items-center justify-content-between gap-2">
+                            <div class="me-2">
+                                <h6 class="mb-0">Digital / MoMo</h6>
+                                <small class="text-muted">Electronic</small>
+                            </div>
+                            <div class="user-progress">
+                                <h6 class="mb-0">{{ digital_sales|intcomma }}</h6>
+                            </div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Include ApexCharts Library -->
+<script src="{% static 'assets/vendor/libs/apex-charts/apexcharts.js' %}"></script>
+
+<script>
+    // 1. Revenue Chart Configuration (Mixed Chart: Column + Line)
+    const revenueChartEl = document.querySelector('#revenueChart');
+    const revenueChartOptions = {
+        series: [
+            {
+                name: 'Revenue',
+                type: 'column',
+                data: {{ chart_data|safe }}
+            },
+            {
+                name: 'Trend',
+                type: 'line',
+                data: {{ chart_data|safe }}
+            }
+        ],
+        chart: {
+            height: 300,
+            type: 'line',
+            toolbar: { show: false }
+        },
+        plotOptions: {
+            bar: {
+                borderRadius: 4,
+                columnWidth: '40%',
+            }
+        },
+        dataLabels: { enabled: false },
+        stroke: {
+            width: [0, 4], // 0px border for bars, 4px width for line
+            curve: 'smooth'
+        },
+        xaxis: {
+            categories: {{ chart_labels|safe|escape }}, // From Django View (Mon, Tue...)
+            axisBorder: { show: false },
+            axisTicks: { show: false }
+        },
+        colors: ['#696cff', '#ffab00'], // Primary Blue for Bars, Orange for Trend Line
+        grid: {
+            borderColor: '#eceef1',
+            strokeDashArray: 3,
+        },
+        fill: {
+            opacity: [1, 1]
+        }
+    };
+    if (revenueChartEl) {
+        new ApexCharts(revenueChartEl, revenueChartOptions).render();
+    }
+
+    // 2. Payment Donut Chart
+    const paymentChartEl = document.querySelector('#paymentChart');
+    const paymentChartOptions = {
+        series: [{{ cash_in_hand }}, {{ digital_sales }}],
+        labels: ['Cash', 'Digital'],
+        chart: {
+            type: 'donut',
+            height: 220
+        },
+        colors: ['#696cff', '#71dd37'],
+        legend: { show: false },
+        dataLabels: { enabled: false },
+        plotOptions: {
+            pie: {
+                donut: {
+                    size: '75%',
+                    labels: {
+                        show: true,
+                        value: {
+                            fontSize: '1.5rem',
+                            fontWeight: 'bold',
+                            formatter: function (val) {
+                                return parseInt(val).toLocaleString();
+                            }
+                        },
+                        total: {
+                            show: true,
+                            label: 'Total',
+                            formatter: function (w) {
+                                const total = w.globals.seriesTotals.reduce((a, b) => a + b, 0);
+                                return total.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+    if (paymentChartEl) {
+        new ApexCharts(paymentChartEl, paymentChartOptions).render();
+    }
+</script>
+{% endblock %}

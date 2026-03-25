@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Inventory | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row gy-4">
+    <!-- Header & Switcher -->
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="fw-bold mb-0">
+                Inventory:
+                {% if location %}
+                    {{ location.name }}
+                {% else %}
+                    All Locations
+                {% endif %}
+            </h4>
+            <p class="mb-0 text-muted">Total Value: <span class="fw-bold text-primary">{{ total_value|intcomma }}</span></p>
+        </div>
+
+        <div class="d-flex gap-2">
+            <!-- Owner Location Switcher -->
+            {% if user.role == 'OWNER' %}
+            <div class="btn-group">
+                <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">
+                    <i class="ri-store-2-line me-1"></i> Switch View
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="{% url 'inventory:dashboard' %}">All Locations</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    {% for loc in locations %}
+                    <li><a class="dropdown-item" href="?location={{ loc.id }}">{{ loc.name }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <a href="{% url 'inventory:receive_stock' %}" class="btn btn-primary">
+                <i class="ri-download-2-line me-1"></i> Receive
+            </a>
+            <a href="{% url 'inventory:transfer_list' %}" class="btn btn-outline-primary">
+                <i class="ri-truck-line me-1"></i> Transfers
+            </a>
+        </div>
+    </div>
+
+    <!-- Expiry Alert (Only shows if items expiring in < 30 days) -->
+    {% if expiring_soon %}
+    <div class="col-12">
+        <div class="alert alert-warning d-flex align-items-center" role="alert">
+            <i class="ri-alarm-warning-line me-2"></i>
+            <div>
+                <strong>Expiry Alert:</strong> {{ expiring_soon|length }} batches are expiring soon.
+                <a href="{% url 'inventory:expiry_alerts' %}" class="btn btn-sm btn-warning ms-2">View Details</a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Stock Batch Table -->
+    <div class="col-12">
+        <div class="card">
+            <div class="table-responsive text-nowrap">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            {% if not location %}<th>Location</th>{% endif %}
+                            <th>Batch #</th>
+                            <th>Quantity</th>
+                            <th>Cost</th>
+                            <th>Expiry</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for batch in batches %}
+                        <tr>
+                            <td>
+                                <strong>{{ batch.product.name }}</strong>
+                                <br><small class="text-muted">{{ batch.product.sku }}</small>
+                            </td>
+                            {% if not location %}
+                            <td><span class="badge bg-label-info">{{ batch.location.name }}</span></td>
+                            {% endif %}
+                            <td>{{ batch.batch_number|default:"-" }}</td>
+                            <td>
+                                <span class="badge bg-label-primary">{{ batch.quantity }}</span>
+                            </td>
+                            <td>{{ batch.cost_price|intcomma }}</td>
+                            <td>{{ batch.expiry_date|date:"d M Y" }}</td>
+                            <td class="text-center">
+                                <a href="{% url 'inventory:batch_detail' batch.pk %}" class="btn btn-sm btn-outline-info" title="View Batch History">
+                                    <i class="ri:eye-line">View</i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="{% if not location %}7{% else %}6{% endif %}" class="text-center py-5">No stock found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

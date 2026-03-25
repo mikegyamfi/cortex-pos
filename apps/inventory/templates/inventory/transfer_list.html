@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+
+{% block title %}Transfer History | Retail POS{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Stock Transfers</h5>
+        <a href="{% url 'inventory:create_transfer' %}" class="btn btn-primary">
+            <i class="ri-add-line me-1"></i> New Request
+        </a>
+    </div>
+    <div class="table-responsive text-nowrap">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Ref #</th>
+                    <th>Direction</th>
+                    <th>Context</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in transfers %}
+                <tr>
+                    <td><strong>{{ t.reference_number }}</strong></td>
+                    <td>
+                        {% if t.source_location == user.assigned_location %}
+                            <span class="badge bg-label-warning"><i class="ri-arrow-right-up-line"></i> OUT</span>
+                        {% else %}
+                            <span class="badge bg-label-info"><i class="ri-arrow-left-down-line"></i> IN</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <small class="text-muted">From:</small> {{ t.source_location.name }}<br>
+                        <small class="text-muted">To:</small> {{ t.destination_location.name }}
+                    </td>
+                    <td>
+                        {% if t.status == 'PENDING' %}
+                            <span class="badge bg-warning">Pending Approval</span>
+                        {% elif t.status == 'TRANSIT' %}
+                            <span class="badge bg-info">In Transit</span>
+                        {% elif t.status == 'RECEIVED' %}
+                            <span class="badge bg-success">Received</span>
+                        {% else %}
+                            <span class="badge bg-secondary">{{ t.get_status_display }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ t.created_at|date:"d M Y" }}</td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            <!-- 1. PROCESS (Warehouse) -->
+                            {% if t.status == 'PENDING' and t.source_location == user.assigned_location or user.role == 'OWNER' and t.status == 'PENDING' %}
+                                <a href="{% url 'inventory:process_transfer' t.pk %}" class="btn btn-sm btn-primary">
+                                    Process
+                                </a>
+                            {% endif %}
+
+                            <!-- 2. RECEIVE (Shop) -->
+                            {% if t.status == 'TRANSIT' and t.destination_location == user.assigned_location or user.role == 'OWNER' and t.status == 'TRANSIT' %}
+                                <a href="{% url 'inventory:receive_transfer' t.pk %}" class="btn btn-sm btn-success">
+                                    Receive
+                                </a>
+                            {% endif %}
+
+                            <!-- 3. VIEW (Always Visible) -->
+                            <a href="{% url 'inventory:transfer_detail' t.pk %}" class="btn btn-sm btn-outline-secondary" title="View Details">
+                                <i class="ri-eye-line"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center py-4">No transfers found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

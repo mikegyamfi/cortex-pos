@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}{{ product.name }} - Details | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Header -->
+    <div class="col-12 mb-4 d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-1 fw-bold">{{ product.name }}</h4>
+            <span class="text-muted">SKU: {{ product.sku }}</span>
+            {% if product.brand %}
+                <span class="badge bg-label-secondary ms-2">{{ product.brand.name }}</span>
+            {% endif %}
+        </div>
+        <div>
+            <a href="{% url 'products:product_edit' product.pk %}" class="btn btn-primary">
+                <i class="ri-pencil-line me-1"></i> Edit Product
+            </a>
+            <a href="{% url 'products:product_list' %}" class="btn btn-outline-secondary ms-2">
+                Back to List
+            </a>
+        </div>
+    </div>
+
+    <!-- Left Column: Details -->
+    <div class="col-xl-4 col-lg-5 col-md-5 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between">
+                <h5 class="card-title mb-0">Product Info</h5>
+                {% if product.is_active %}
+                    <span class="badge bg-success">Active</span>
+                {% else %}
+                    <span class="badge bg-danger">Inactive</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <!-- Image -->
+                <div class="text-center mb-4">
+                    {% if product.images.first %}
+                        <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}" class="img-fluid rounded" style="max-height: 200px;">
+                    {% else %}
+                        <div class="bg-label-secondary rounded d-flex align-items-center justify-content-center" style="height: 150px;">
+                            <span class="text-muted"><i class="ri-image-line ri-3x"></i></span>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Pricing Table -->
+                <div class="table-responsive border rounded mb-4">
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <td class="text-muted ps-3">Selling Price</td>
+                                <td class="fw-bold text-end pe-3">{{ product.selling_price|intcomma }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted ps-3">Cost Price</td>
+                                <td class="text-end pe-3">{{ product.cost_price|intcomma }}</td>
+                            </tr>
+                            {% if product.wholesale_price %}
+                            <tr>
+                                <td class="text-muted ps-3">Wholesale</td>
+                                <td class="text-end pe-3">{{ product.wholesale_price|intcomma }}</td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <td class="text-muted ps-3">Tax Rate</td>
+                                <td class="text-end pe-3">{{ product.tax_rate }}%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Logistics -->
+                <h6 class="text-muted text-uppercase fs-tiny fw-bold">Logistics</h6>
+                <ul class="list-unstyled mb-0">
+                    <li class="d-flex justify-content-between mb-2">
+                        <span>Barcode:</span>
+                        <span class="fw-medium">{{ product.barcode|default:"N/A" }}</span>
+                    </li>
+                    <li class="d-flex justify-content-between mb-2">
+                        <span>Unit:</span>
+                        <span class="fw-medium">{{ product.unit.name|default:"pcs" }}</span>
+                    </li>
+                    <li class="d-flex justify-content-between mb-2">
+                        <span>Shelf Location:</span>
+                        <span class="fw-medium">{{ product.shelf_location|default:"-" }}</span>
+                    </li>
+                    <li class="d-flex justify-content-between">
+                        <span>Weight:</span>
+                        <span class="fw-medium">{{ product.weight_kg|default:"-" }} kg</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Inventory Status -->
+    <div class="col-xl-8 col-lg-7 col-md-7 mb-4">
+        <!-- Stock Summary Card -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Current Inventory</h5>
+                <h4 class="mb-0 text-primary">{{ total_stock }} <span class="fs-6 text-muted">{{ product.unit.symbol }}</span></h4>
+            </div>
+            <div class="table-responsive text-nowrap">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Location</th>
+                            <th>Type</th>
+                            <th class="text-end">Quantity</th>
+                            <th class="text-end">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in stock_summary %}
+                        <tr>
+                            <td><strong>{{ item.location__name }}</strong></td>
+                            <td>
+                                {% if item.location__location_type == 'WAREHOUSE' %}
+                                    <span class="badge bg-label-warning"><i class="ri-building-4-line"></i> Warehouse</span>
+                                {% else %}
+                                    <span class="badge bg-label-info"><i class="ri-store-2-line"></i> Shop</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end fw-bold">{{ item.total_qty }}</td>
+                            <td class="text-end">
+                                {% if item.total_qty <= product.low_stock_threshold %}
+                                    <span class="badge bg-label-danger">Low Stock</span>
+                                {% else %}
+                                    <span class="badge bg-label-success">Good</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center py-4">No stock available in any location.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Recent Batches -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Recent Batches</h5>
+            </div>
+            <div class="table-responsive text-nowrap">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Batch #</th>
+                            <th>Location</th>
+                            <th>Qty</th>
+                            <th>Expiry</th>
+                            <th>Rec'd Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for batch in recent_batches %}
+                        <tr>
+                            <td>{{ batch.batch_number|default:"-" }}</td>
+                            <td>{{ batch.location.name }}</td>
+                            <td>{{ batch.quantity }}</td>
+                            <td>
+                                {% if batch.expiry_date %}
+                                    {{ batch.expiry_date|date:"d M Y" }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ batch.received_date|date:"d M Y" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center py-4">No recent batch history.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

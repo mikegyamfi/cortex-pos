@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% load static crispy_forms_tags %}
+
+{% block title %}Receive Stock (GRN) | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Receive Stock (Goods In)</h5>
+                <a href="{% url 'inventory:dashboard' %}" class="btn btn-outline-secondary">
+                    <i class="ri-arrow-go-back-line me-1"></i> Back
+                </a>
+            </div>
+            
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <!-- DYNAMIC LOCATION SECTION -->
+                    {% if user.role == 'OWNER' %}
+                        <div class="mb-4 p-3 bg-label-primary rounded">
+                            <h6 class="text-primary mb-2"><i class="ri-map-pin-line me-1"></i> Destination</h6>
+                            {{ form.location|as_crispy_field }}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info d-flex align-items-center" role="alert">
+                            <i class="ri-information-line me-2"></i>
+                            <div>
+                                Receiving into: <strong>{{ user.assigned_location.name }}</strong>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <!-- Section 1: Item Details -->
+                    <h6 class="fw-bold text-muted mb-3">Product Information</h6>
+                    <div class="mb-3">
+                        {{ form.product|as_crispy_field }}
+                    </div>
+                    
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            {{ form.quantity|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.cost_price|as_crispy_field }}
+                            <small class="text-muted">Cost per unit for this batch.</small>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Batch & Logistics -->
+                    <h6 class="fw-bold text-muted mt-4 mb-3">Batch & Supplier Details</h6>
+                    <div class="mb-3">
+                        {{ form.supplier|as_crispy_field }}
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.batch_number|as_crispy_field }}
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            {{ form.manufactured_date|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.expiry_date|as_crispy_field }}
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-top">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="ri-download-2-line me-1"></i> Confirm Receipt
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% load crispy_forms_filters %}
+{% load static crispy_forms_tags %}
+
+{% block title %}{{ title }} | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">{{ title }}</h5>
+                <a href="{% url 'finance:expenses_list' %}" class="btn btn-outline-secondary">Back</a>
+            </div>
+
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            {{ form.date_incurred|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.category|as_crispy_field }}
+                        </div>
+                        <div class="col-md-12">
+                            {{ form.amount|as_crispy_field }}
+                        </div>
+                        <div class="col-md-12">
+                            {{ form.description|as_crispy_field }}
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-check form-switch mb-3">
+                                {{ form.is_paid_from_till }}
+                                <label class="form-check-label" for="{{ form.is_paid_from_till.id_for_label }}">
+                                    Paid directly from Cash Drawer?
+                                </label>
+                                <div class="form-text">If checked, this amount will be deducted from your daily cash reconciliation.</div>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            {{ form.receipt_image|as_crispy_field }}
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-top">
+                        <button type="submit" class="btn btn-primary w-100">Save Expense</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

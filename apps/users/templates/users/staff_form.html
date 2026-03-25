@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+{% load crispy_forms_filters %}
+{% load static crispy_forms_tags %}
+
+{% block title %}{{ title }} | Retail POS{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="fw-bold mb-0">{{ title }}</h4>
+    <a href="{% url 'users:list' %}" class="btn btn-outline-secondary">
+        <i class="ri-arrow-go-back-line me-1"></i> Back to List
+    </a>
+</div>
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    <div class="row">
+        <!-- LEFT COLUMN: User Account Info -->
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header border-bottom">
+                    <h6 class="mb-0 text-primary"><i class="ri-user-settings-line me-2"></i>Account Information</h6>
+                </div>
+
+                <div class="card-body pt-4">
+                    <h6 class="fw-bold text-muted mb-3">Login Details</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12">
+                            {{ form.username|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.first_name|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.last_name|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.email|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.phone_number|as_crispy_field }}
+                        </div>
+
+                        {% if 'password' in form.fields %}
+                        <div class="col-12">
+                            <div class="alert alert-warning d-flex align-items-center mb-2" role="alert">
+                                <i class="ri-shield-keyhole-line me-2"></i>
+                                <div class="small">Set a temporary password. User must change it on first login.</div>
+                            </div>
+                            {{ form.password|as_crispy_field }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <h6 class="fw-bold text-muted mb-3">Role & Access</h6>
+                    <div class="p-3 bg-lighter rounded mb-4">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                {{ form.role|as_crispy_field }}
+                            </div>
+                            <div class="col-12">
+                                {{ form.assigned_location|as_crispy_field }}
+                                <small class="text-muted">Determines which shop's stock they can access.</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if 'is_active' in form.fields %}
+                    <div class="form-check form-switch">
+                        {{ form.is_active }}
+                        <label class="form-check-label fw-bold" for="{{ form.is_active.id_for_label }}">Account Active</label>
+                        <div class="form-text">Disable to prevent login.</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: HR & Profile -->
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header border-bottom">
+                    <h6 class="mb-0 text-info"><i class="ri-folder-user-line me-2"></i>Staff Profiling (Optional)</h6>
+                </div>
+
+                <div class="card-body pt-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            {{ profile_form.date_of_birth|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ profile_form.date_joined|as_crispy_field }}
+                        </div>
+
+                        <div class="col-12">
+                            <h6 class="fw-bold text-muted mt-2 mb-2">Identification</h6>
+                        </div>
+                        <div class="col-md-6">
+                            {{ profile_form.id_type|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ profile_form.id_number|as_crispy_field }}
+                        </div>
+                        <div class="col-12">
+                            {{ profile_form.home_address|as_crispy_field }}
+                        </div>
+
+                        <div class="col-12">
+                            <h6 class="fw-bold text-muted mt-3 mb-2">Emergency Contact</h6>
+                        </div>
+                        <div class="col-md-6">
+                            {{ profile_form.emergency_contact_name|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ profile_form.emergency_contact_phone|as_crispy_field }}
+                        </div>
+                        <div class="col-12">
+                            {{ profile_form.emergency_contact_relation|as_crispy_field }}
+                        </div>
+
+                        <div class="col-12">
+                            <h6 class="fw-bold text-muted mt-3 mb-2">Documents & Notes</h6>
+                        </div>
+                        <div class="col-md-6">
+                            {{ profile_form.base_salary|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            <!-- Spacer or another field -->
+                        </div>
+                        <div class="col-md-6">
+                            {{ profile_form.id_document|as_crispy_field }}
+                        </div>
+                        <div class="col-md-6">
+                            {{ profile_form.contract_file|as_crispy_field }}
+                        </div>
+                        <div class="col-12">
+                            {{ profile_form.notes|as_crispy_field }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-footer border-top bg-light">
+                    <button type="submit" class="btn btn-primary btn-lg w-100">
+                        <i class="ri-save-line me-1"></i> Save Staff Account
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}

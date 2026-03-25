@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Manage Delivery | Retail POS{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center border-bottom">
+                <h5 class="mb-0">Delivery Details</h5>
+                <a href="{% url 'sales:deliveries' %}" class="btn btn-outline-secondary btn-sm">
+                    <i class="ri-arrow-go-back-line me-1"></i> Back
+                </a>
+            </div>
+
+            <div class="card-body pt-4">
+                <!-- Delivery Context -->
+                <div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-lighter rounded border">
+                    <div>
+                        <span class="text-muted small d-block">INVOICE</span>
+                        <a href="{% url 'sales:detail' delivery.sale.pk %}" class="fw-bold text-primary">
+                            #{{ delivery.sale.invoice_number|slice:":8" }}
+                        </a>
+                    </div>
+                    <div class="text-end" style="max-width: 60%;">
+                        <span class="text-muted small d-block">DESTINATION</span>
+                        <span class="fw-medium text-dark">{{ delivery.destination_address }}</span>
+                    </div>
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <!-- Section 1: Status & Provider -->
+                    <h6 class="fw-bold text-muted text-uppercase fs-tiny mb-3">Status & Provider</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label">Current Status</label>
+                            <select name="status" class="form-select">
+                                <option value="PENDING" {% if delivery.status == 'PENDING' %}selected{% endif %}>Pending Pickup</option>
+                                <option value="DISPATCHED" {% if delivery.status == 'DISPATCHED' %}selected{% endif %}>Dispatched (In Transit)</option>
+                                <option value="DELIVERED" {% if delivery.status == 'DELIVERED' %}selected{% endif %}>Delivered</option>
+                                <option value="FAILED" {% if delivery.status == 'FAILED' %}selected{% endif %}>Failed / Returned</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Logistics Provider</label>
+                            <select name="provider" class="form-select">
+                                <option value="IN_HOUSE" {% if delivery.provider == 'IN_HOUSE' %}selected{% endif %}>In-House Rider</option>
+                                <option value="YANGO" {% if delivery.provider == 'YANGO' %}selected{% endif %}>Yango</option>
+                                <option value="UBER" {% if delivery.provider == 'UBER' %}selected{% endif %}>Uber</option>
+                                <option value="BOLT" {% if delivery.provider == 'BOLT' %}selected{% endif %}>Bolt</option>
+                                <option value="DHL" {% if delivery.provider == 'DHL' %}selected{% endif %}>DHL / FedEx</option>
+                                <option value="OTHER" {% if delivery.provider == 'OTHER' %}selected{% endif %}>Other</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Driver Details -->
+                    <h6 class="fw-bold text-muted text-uppercase fs-tiny mb-3">Driver Information</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label">Rider Name</label>
+                            <div class="input-group input-group-merge">
+                                <span class="input-group-text"><i class="ri-user-star-line"></i></span>
+                                <input type="text" class="form-control" name="rider_name" value="{{ delivery.rider_name }}" placeholder="e.g. Michael">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Rider Phone</label>
+                            <div class="input-group input-group-merge">
+                                <span class="input-group-text"><i class="ri-phone-line"></i></span>
+                                <input type="text" class="form-control" name="rider_phone" value="{{ delivery.rider_phone }}" placeholder="054...">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Vehicle Details</label>
+                            <input type="text" class="form-control" name="vehicle_details" value="{{ delivery.vehicle_details }}" placeholder="Plate / Color / Model">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tracking / Trip ID</label>
+                            <input type="text" class="form-control" name="tracking_ref" value="{{ delivery.tracking_reference }}" placeholder="App Reference Code">
+                        </div>
+                    </div>
+
+                    <!-- Section 3: Financials (Optional) -->
+                    <h6 class="fw-bold text-muted text-uppercase fs-tiny mb-3">Cost Tracking (Optional)</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label">Charged to Customer</label>
+                            <div class="input-group input-group-merge">
+                                <span class="input-group-text">GHS</span>
+                                <input type="number" step="0.01" class="form-control" name="delivery_fee_charged" value="{{ delivery.delivery_fee_charged }}">
+                            </div>
+                            <div class="form-text">Amount on the invoice.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Cost to Business</label>
+                            <div class="input-group input-group-merge">
+                                <span class="input-group-text">GHS</span>
+                                <input type="number" step="0.01" class="form-control" name="cost_to_business" value="{{ delivery.cost_to_business }}">
+                            </div>
+                            <div class="form-text">Amount paid to rider/app.</div>
+                        </div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-4">
+                        <label class="form-label">Notes / Instructions</label>
+                        <textarea class="form-control" name="notes" rows="2" placeholder="Any special instructions or issues...">{{ delivery.notes }}</textarea>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="ri-save-line me-2"></i> Update Delivery
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
