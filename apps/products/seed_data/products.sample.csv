@@ -1,6 +1,5 @@
-name,sku,barcode,category,unit
-Engine Oil 5W-30 1L,,,Lubricants,Bottle
-Brake Fluid DOT 4 500ml,,,Lubricants,Bottle
-Air Filter - Toyota Corolla,AF-COR,,Filters,Piece
-Oil Filter - Generic,,,Filters,Piece
-Wiper Blade 22 inch,,,Accessories,Piece
+name,sku,barcode,category,unit,location
+Engine Oil 5W-30 1L,,,Lubricants,Bottle,Auto Car Shop
+Brake Fluid DOT 4 500ml,,,Lubricants,Bottle,Auto Car Shop
+Pineapple Juice 500ml,,,Drinks,Bottle,Drinks Shop
+Cotton T-Shirt - Large,,,Apparel,Piece,Boutique

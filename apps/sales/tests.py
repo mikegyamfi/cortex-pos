@@ -33,6 +33,7 @@ class POSTestBase(TestCase):
         self.product = Product.objects.create(
             name="Cola 500ml", sku="COLA500", cost_price=Decimal("6.00"),
             selling_price=Decimal("10.00"),  # no wholesale -> wholesale falls back to retail
+            location=self.loc,
         )
         self.batch = StockBatch.objects.create(
             product=self.product, location=self.loc, quantity=50, cost_price=Decimal("6.00")
@@ -334,13 +335,104 @@ class RoleGuardingTests(POSTestBase):
         self.assertEqual(resp.status_code, 200)
 
     def test_product_search_searches_whole_catalogue(self):
-        # A product is findable via the server API regardless of the initial grid.
+        # A product in THIS shop is findable via the server API.
         Product.objects.create(
             name="Zebra Energy Drink", sku="ZEB1",
             cost_price=Decimal("2.00"), selling_price=Decimal("5.00"),
+            location=self.loc,
         )
         self.client.force_login(self.cashier)
         resp = self.client.get(reverse("sales:product_search"), {"q": "zebra"})
         self.assertEqual(resp.status_code, 200)
         names = [r["name"] for r in resp.json()["results"]]
         self.assertIn("Zebra Energy Drink", names)
+
+
+class MultiTenantProductScopingTests(POSTestBase):
+
+    def setUp(self):
+        super().setUp()
+        # A second shop with its own product and cashier.
+        self.other_loc = Location.objects.create(name="Drinks Shop", address="2 St")
+        self.other_cashier = User.objects.create_user(
+            username="cash2", password="pw", role="CASHIER", assigned_location=self.other_loc
+        )
+        self.other_product = Product.objects.create(
+            name="Pineapple Juice", sku="PINE1", cost_price=Decimal("1"),
+            selling_price=Decimal("3"), location=self.other_loc,
+        )
+
+    def test_pos_search_does_not_cross_shops(self):
+        # Cashier at the Main Shop must not find the Drinks Shop's product.
+        self.client.force_login(self.cashier)
+        resp = self.client.get(reverse("sales:product_search"), {"q": "pineapple"})
+        names = [r["name"] for r in resp.json()["results"]]
+        self.assertNotIn("Pineapple Juice", names)
+
+        # ...but the other shop's cashier can.
+        self.client.force_login(self.other_cashier)
+        resp = self.client.get(reverse("sales:product_search"), {"q": "pineapple"})
+        names = [r["name"] for r in resp.json()["results"]]
+        self.assertIn("Pineapple Juice", names)
+
+    def test_catalog_list_scoped_to_own_shop(self):
+        # Manager at the Main Shop sees only Main Shop products.
+        self.client.force_login(self.manager)
+        resp = self.client.get(reverse("products:product_list"))
+        skus = [p.sku for p in resp.context["page_obj"]]
+        self.assertIn("COLA500", skus)
+        self.assertNotIn("PINE1", skus)
+
+    def test_owner_sees_all_shops(self):
+        self.client.force_login(self.owner)
+        resp = self.client.get(reverse("products:product_list"))
+        skus = [p.sku for p in resp.context["page_obj"]]
+        self.assertIn("COLA500", skus)
+        self.assertIn("PINE1", skus)
+
+    def test_same_sku_allowed_in_different_shops(self):
+        # COLA500 already exists at Main Shop; the same SKU is fine at another shop.
+        p = Product.objects.create(
+            name="Cola at Drinks Shop", sku="COLA500",
+            cost_price=Decimal("5"), selling_price=Decimal("7"), location=self.other_loc,
+        )
+        self.assertEqual(Product.objects.filter(sku="COLA500").count(), 2)
+        # ...and the two can carry different prices (per-shop pricing).
+        self.assertNotEqual(
+            Product.objects.get(sku="COLA500", location=self.loc).selling_price,
+            p.selling_price,
+        )
+
+
+class CustomerScopingTests(POSTestBase):
+
+    def setUp(self):
+        super().setUp()
+        self.other_loc = Location.objects.create(name="Drinks Shop", address="2 St")
+        self.other_cashier = User.objects.create_user(
+            username="cash2", password="pw", role="CASHIER", assigned_location=self.other_loc
+        )
+
+    def test_same_phone_is_a_separate_customer_per_shop(self):
+        from apps.customers.models import Customer
+        phone = "0245555555"
+        self.client.force_login(self.cashier)
+        self.client.post(reverse("customers:api_create"),
+                         data=json.dumps({"phone": phone, "name": "Kofi"}),
+                         content_type="application/json")
+        self.client.force_login(self.other_cashier)
+        self.client.post(reverse("customers:api_create"),
+                         data=json.dumps({"phone": phone, "name": "Kofi"}),
+                         content_type="application/json")
+        # One customer per shop with that phone.
+        self.assertEqual(Customer.objects.filter(phone_number=phone).count(), 2)
+        self.assertEqual(Customer.objects.filter(phone_number=phone, location=self.loc).count(), 1)
+        self.assertEqual(Customer.objects.filter(phone_number=phone, location=self.other_loc).count(), 1)
+
+    def test_customer_search_scoped_to_shop(self):
+        from apps.customers.models import Customer
+        Customer.objects.create(phone_number="0247777777", first_name="Ama", location=self.other_loc)
+        self.client.force_login(self.cashier)  # Main Shop cashier
+        resp = self.client.get(reverse("customers:api_search"), {"q": "Ama"})
+        names = [r["name"] for r in resp.json()["results"]]
+        self.assertNotIn("Ama", names)

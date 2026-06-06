@@ -74,16 +74,25 @@ class Product(BaseRetailModel):
     slug = models.SlugField(unique=True, max_length=255)
     description = models.TextField(blank=True)
 
+    # Ownership: which shop/location this product belongs to. Each shop only
+    # sees its own products. Blank = unassigned (visible to owners only until
+    # bound to a shop).
+    location = models.ForeignKey(
+        'location.Location', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='products', help_text="Shop this product belongs to."
+    )
+
     # Classification
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='products')
     brand = models.ForeignKey(Brand, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')
     unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, blank=True)
 
-    # Identifiers (Scanning & Internal)
-    sku = models.CharField(max_length=100, unique=True, help_text="Internal Stock Keeping Unit")
+    # Identifiers (Scanning & Internal). Unique PER SHOP, not globally — the
+    # same SKU/barcode can exist in different shops (each is a separate product
+    # bound to its own location). Enforced by the constraints in Meta below.
+    sku = models.CharField(max_length=100, db_index=True, help_text="Internal Stock Keeping Unit")
     barcode = models.CharField(
         max_length=100,
-        unique=True,
         null=True,
         blank=True,
         db_index=True,
@@ -111,10 +120,27 @@ class Product(BaseRetailModel):
     manufacturer_part_number = models.CharField(max_length=100, blank=True)
     shelf_location = models.CharField(max_length=100, blank=True, help_text="General shelf location hint")
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['location', 'sku'], name='uniq_product_sku_per_location'
+            ),
+            models.UniqueConstraint(
+                fields=['location', 'barcode'], name='uniq_product_barcode_per_location',
+                condition=models.Q(barcode__isnull=False),
+            ),
+        ]
+
     def save(self, *args, **kwargs):
         if not self.slug:
-            # Ensure uniqueness by appending the already unique SKU
-            self.slug = slugify(f"{self.name}-{self.sku}")
+            base = slugify(f"{self.name}-{self.sku}") or 'product'
+            slug = base
+            n = 1
+            # slug stays globally unique even when SKUs repeat across shops
+            while Product.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base}-{n}"
+                n += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
     def __str__(self):

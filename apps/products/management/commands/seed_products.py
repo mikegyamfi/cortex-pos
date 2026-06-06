@@ -31,6 +31,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils.text import slugify
 
+from apps.location.models import Location
 from apps.products.models import Product, Category, Unit
 
 
@@ -41,6 +42,7 @@ COLUMN_ALIASES = {
     'barcode': 'barcode', 'ean': 'barcode', 'upc': 'barcode',
     'category': 'category', 'group': 'category',
     'unit': 'unit', 'uom': 'unit',
+    'location': 'location', 'shop': 'location', 'store': 'location',
 }
 
 
@@ -48,9 +50,11 @@ class Command(BaseCommand):
     help = "Seed products from a CSV/TXT file with zero stock and zero prices."
 
     def add_arguments(self, parser):
-        parser.add_argument('--file', required=True, help="Path to a .csv or .txt file of products.")
+        parser.add_argument('--file', required=True, help="Path to a .csv/.txt/.json file of products.")
         parser.add_argument('--category', default=None,
                             help="Optional category name to assign to every seeded product (created if missing).")
+        parser.add_argument('--location', '--shop', dest='location', default=None,
+                            help="Bind every seeded product to this shop/location (must already exist).")
         parser.add_argument('--dry-run', action='store_true', help="Show what would happen without writing to the DB.")
 
     def handle(self, *args, **options):
@@ -64,48 +68,57 @@ class Command(BaseCommand):
 
         dry_run = options['dry_run']
         default_category_name = options['category']
+        default_location_name = options['location']
 
         created = skipped = 0
-        # Cache SKUs we generate this run so duplicates within the same file
-        # don't collide before they're written.
-        used_skus = set(Product.objects.values_list('sku', flat=True))
+        # Track SKUs already taken, keyed by (location_id, sku), so we don't
+        # collide within the same shop before rows are written. SKUs are unique
+        # PER SHOP, so the same SKU is fine in different shops.
+        used_skus = {(p['location_id'], p['sku']) for p in Product.objects.values('location_id', 'sku')}
 
         with transaction.atomic():
             category = None
             if default_category_name:
                 category = self._get_category(default_category_name, dry_run)
 
+            shop = self._get_location(default_location_name) if default_location_name else None
+
             for row in rows:
                 name = (row.get('name') or '').strip()
                 if not name:
                     continue
 
-                # Idempotent: when an explicit SKU is given, dedupe on SKU
-                # (distinct products can legitimately share a display name).
-                # Otherwise dedupe on name.
-                explicit_sku = (row.get('sku') or '').strip()
-                if explicit_sku:
-                    if Product.objects.filter(sku__iexact=explicit_sku).exists():
-                        skipped += 1
-                        continue
-                    sku = explicit_sku
-                else:
-                    if Product.objects.filter(name__iexact=name).exists():
-                        skipped += 1
-                        continue
-                    sku = self._unique_sku(name, used_skus)
-                used_skus.add(sku)
-
                 row_category = category
                 if row.get('category'):
                     row_category = self._get_category(str(row['category']).strip(), dry_run)
 
+                row_location = shop
+                if row.get('location'):
+                    row_location = self._get_location(str(row['location']).strip())
+                loc_id = row_location.id if row_location else None
+
+                # Idempotent, scoped to the shop: when an explicit SKU is given,
+                # dedupe on (shop, SKU); otherwise dedupe on (shop, name).
+                explicit_sku = (row.get('sku') or '').strip()
+                if explicit_sku:
+                    if Product.objects.filter(location=row_location, sku__iexact=explicit_sku).exists():
+                        skipped += 1
+                        continue
+                    sku = explicit_sku
+                else:
+                    if Product.objects.filter(location=row_location, name__iexact=name).exists():
+                        skipped += 1
+                        continue
+                    sku = self._unique_sku(name, used_skus, loc_id, row_location)
+                used_skus.add((loc_id, sku))
+
                 barcode = (row.get('barcode') or '').strip() or None
-                if barcode and Product.objects.filter(barcode=barcode).exists():
-                    barcode = None  # don't fail the whole run on a dup barcode
+                if barcode and Product.objects.filter(location=row_location, barcode=barcode).exists():
+                    barcode = None  # don't fail the whole run on a dup barcode in this shop
 
                 if dry_run:
-                    self.stdout.write(f"  + {name}  (sku={sku})")
+                    where = f" -> {row_location.name}" if row_location else ""
+                    self.stdout.write(f"  + {name}  (sku={sku}){where}")
                     created += 1
                     continue
 
@@ -113,6 +126,7 @@ class Command(BaseCommand):
                     name=name,
                     sku=sku,
                     barcode=barcode,
+                    location=row_location,
                     category=row_category,
                     unit=self._get_unit(row.get('unit'), dry_run),
                     cost_price=0,
@@ -174,12 +188,13 @@ class Command(BaseCommand):
             # Plain text: one name per line.
             return [{'name': line.strip()} for line in fh if line.strip()]
 
-    def _unique_sku(self, name, used):
+    def _unique_sku(self, name, used, loc_id, location):
+        """Generate a SKU unique within the given shop (location)."""
         base = re.sub(r'[^A-Z0-9]', '', slugify(name).upper()) or 'PROD'
         base = base[:40]
         sku = base
         n = 1
-        while sku in used or Product.objects.filter(sku=sku).exists():
+        while (loc_id, sku) in used or Product.objects.filter(location=location, sku=sku).exists():
             suffix = str(n)
             sku = base[:40 - len(suffix)] + suffix
             n += 1
@@ -192,6 +207,18 @@ class Command(BaseCommand):
             name=name, defaults={'slug': slugify(name) or 'category'}
         )
         return cat
+
+    def _get_location(self, name):
+        name = (name or '').strip()
+        if not name:
+            return None
+        loc = Location.objects.filter(name__iexact=name).first()
+        if not loc:
+            raise CommandError(
+                f"Shop/location '{name}' not found. Create it first "
+                f"(Administration -> Warehouses & Shops) or check the spelling."
+            )
+        return loc
 
     def _get_unit(self, name, dry_run):
         name = (name or '').strip()

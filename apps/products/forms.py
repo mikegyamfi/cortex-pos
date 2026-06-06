@@ -11,6 +11,7 @@ class ProductForm(forms.ModelForm):
     class Meta:
         model = Product
         fields = [
+            'location',
             'name', 'category', 'brand', 'unit',
             'sku', 'barcode',
             'cost_price', 'selling_price', 'wholesale_price',
@@ -29,9 +30,12 @@ class ProductForm(forms.ModelForm):
     def clean_barcode(self):
         barcode = self.cleaned_data.get('barcode')
         if barcode:
-            # Check if barcode exists (excluding current instance if editing)
-            if Product.objects.filter(barcode=barcode).exclude(pk=self.instance.pk).exists():
-                raise forms.ValidationError("This barcode is already assigned to another product.")
+            # Barcodes are unique PER SHOP, so scope the check to this product's
+            # shop (set on the instance before validation, or chosen on the form).
+            loc = self.cleaned_data.get('location') or getattr(self.instance, 'location', None)
+            qs = Product.objects.filter(barcode=barcode, location=loc).exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise forms.ValidationError("This barcode is already used in this shop.")
         return barcode
 
 

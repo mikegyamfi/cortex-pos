@@ -72,10 +72,12 @@ def pos_view(request):
         return render(request, 'sales/open_register.html')
 
     # 2. Load Catalog Data for POS (with live stock for THIS location so the
-    #    cashier can see quantity-on-hand on every product card).
+    #    cashier can see quantity-on-hand on every product card). Products are
+    #    scoped to this shop — a register only sells its own shop's catalogue.
     categories = Category.objects.filter(is_active=True)
     products = list(
-        Product.objects.filter(is_active=True).select_related('category').order_by('name')
+        Product.objects.filter(is_active=True, location=location)
+        .select_related('category').order_by('name')
     )
     stock_map = _location_stock_map(location, [p.id for p in products])
     for p in products:
@@ -102,7 +104,8 @@ def product_search_api(request):
     location = request.user.assigned_location
     query = (request.GET.get('q') or '').strip()
 
-    products = Product.objects.filter(is_active=True).select_related('category')
+    # Scoped to the cashier's shop — search never crosses into other shops.
+    products = Product.objects.filter(is_active=True, location=location).select_related('category')
     if query:
         products = products.filter(
             Q(name__icontains=query) |

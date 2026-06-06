@@ -9,13 +9,20 @@ class Customer(BaseRetailModel):
     Designed for 'Silent Accumulation' - we can have a profile
     with just a phone number and nothing else.
     """
-    # Essential for SMS Receipts
-    phone_number = models.CharField(max_length=20, unique=True, db_index=True)
+    # Which shop this customer belongs to. Each shop keeps its own customer list.
+    location = models.ForeignKey(
+        'location.Location', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='customers'
+    )
+
+    # Essential for SMS Receipts. Unique PER SHOP (not globally) — the same
+    # person can be a customer of two different shops.
+    phone_number = models.CharField(max_length=20, db_index=True)
 
     # Optional Details (captured only if they want to give it)
     first_name = models.CharField(max_length=100, blank=True)
     last_name = models.CharField(max_length=100, blank=True)
-    email = models.EmailField(unique=True, null=True, blank=True)
+    email = models.EmailField(null=True, blank=True)
     address = models.TextField(blank=True)
 
     # Marketing Flags (GDPR/Data Protection compliance)
@@ -32,6 +39,11 @@ class Customer(BaseRetailModel):
 
     class Meta:
         ordering = ['-last_visit_date']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['location', 'phone_number'], name='uniq_customer_phone_per_location'
+            ),
+        ]
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.phone_number})".strip()

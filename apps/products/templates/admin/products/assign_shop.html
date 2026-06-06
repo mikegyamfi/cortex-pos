@@ -1,0 +1,32 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<p>You are about to bind the following <strong>{{ products|length }}</strong> product(s) to a shop.
+   Each shop only sees its own products.</p>
+
+<form method="post">
+    {% csrf_token %}
+
+    {# carry the selected product ids through to the apply step #}
+    {% for pk in selected %}
+    <input type="hidden" name="{{ action_checkbox_name }}" value="{{ pk }}">
+    {% endfor %}
+    <input type="hidden" name="action" value="assign_to_shop">
+
+    <table>
+        {{ form.as_table }}
+    </table>
+
+    <ul style="max-height:240px; overflow:auto; margin:1em 0;">
+        {% for p in products %}
+        <li>{{ p.name }} <small>({{ p.sku }})</small>{% if p.location %} — currently: {{ p.location.name }}{% endif %}</li>
+        {% endfor %}
+    </ul>
+
+    <div class="submit-row">
+        <input type="submit" name="apply" value="Bind to shop" class="default">
+        <a href="../" class="button cancel-link">{% trans "Cancel" %}</a>
+    </div>
+</form>
+{% endblock %}

@@ -15,7 +15,13 @@ def customer_list(request):
     List of all customers with search functionality.
     """
     query = request.GET.get('q', '')
-    customers = Customer.objects.all().order_by('-last_visit_date')
+    customers = Customer.objects.all()
+
+    # Multi-tenant: a shop only sees its own customers. Owners see all.
+    if request.user.role != 'OWNER':
+        customers = customers.filter(location=request.user.assigned_location)
+
+    customers = customers.order_by('-last_visit_date')
 
     if query:
         customers = customers.filter(
@@ -39,6 +45,9 @@ def customer_list(request):
 def customer_create(request):
     if request.method == 'POST':
         form = CustomerForm(request.POST)
+        # Bind to the creator's shop before validation so the per-shop phone
+        # uniqueness check runs against the right shop.
+        form.instance.location = request.user.assigned_location
         if form.is_valid():
             customer = form.save()
             messages.success(request, f"Customer {customer.get_display_name} added successfully.")
@@ -51,6 +60,9 @@ def customer_create(request):
 @login_required
 def customer_edit(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
+    if request.user.role != 'OWNER' and customer.location_id != request.user.assigned_location_id:
+        messages.error(request, "That customer belongs to another shop.")
+        return redirect('customers:list')
     if request.method == 'POST':
         form = CustomerForm(request.POST, instance=customer)
         if form.is_valid():
@@ -65,6 +77,9 @@ def customer_edit(request, pk):
 @login_required
 def customer_detail(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
+    if request.user.role != 'OWNER' and customer.location_id != request.user.assigned_location_id:
+        messages.error(request, "That customer belongs to another shop.")
+        return redirect('customers:list')
     # Get purchase history (reverse relation from Sale model)
     purchases = customer.purchases.all().order_by('-created_at')[:20]
 
@@ -91,11 +106,15 @@ def api_search_customers(request):
     if len(query) < 2:
         return JsonResponse({'results': []})
 
+    # Scoped to the cashier's shop — search never returns another shop's customers.
     customers = Customer.objects.filter(
         Q(first_name__icontains=query) |
         Q(last_name__icontains=query) |
         Q(phone_number__icontains=query)
-    )[:10]  # Limit to top 10 results for performance
+    )
+    if request.user.role != 'OWNER':
+        customers = customers.filter(location=request.user.assigned_location)
+    customers = customers[:10]  # Limit to top 10 results for performance
 
     results = []
     for c in customers:
@@ -124,8 +143,10 @@ def api_create_customer(request):
         if not phone:
             return JsonResponse({'success': False, 'message': 'Phone number required'})
 
+        # Customer belongs to the cashier's shop; phone is unique per shop.
         customer, created = Customer.objects.get_or_create(
             phone_number=phone,
+            location=request.user.assigned_location,
             defaults={'first_name': name}
         )
 

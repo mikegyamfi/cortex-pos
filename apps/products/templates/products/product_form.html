@@ -24,6 +24,11 @@
                         <div class="col-md-8">
                             <h6 class="fw-bold text-muted mb-3">Basic Information</h6>
                             <div class="row g-3">
+                                {% if form.location %}
+                                <div class="col-md-12">
+                                    {{ form.location|as_crispy_field }}
+                                </div>
+                                {% endif %}
                                 <div class="col-md-12">
                                     {{ form.name|as_crispy_field }}
                                 </div>

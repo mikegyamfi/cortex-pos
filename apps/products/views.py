@@ -19,7 +19,11 @@ def product_list(request):
     Features comprehensive search and filtering.
     """
     # 1. Base Query
-    products = Product.objects.all().select_related('category', 'brand', 'unit').prefetch_related('images')
+    products = Product.objects.all().select_related('location', 'category', 'brand', 'unit').prefetch_related('images')
+
+    # Multi-tenant scoping: a shop only sees its own products. Owners see all.
+    if request.user.role != 'OWNER':
+        products = products.filter(location=request.user.assigned_location)
 
     # 2. Filtering
     query = request.GET.get('q', '')
@@ -46,10 +50,9 @@ def product_list(request):
     elif status == 'inactive':
         products = products.filter(is_active=False)
 
-    # Owner-Only Filter: Show products stocked in a specific location
+    # Owner-Only Filter: show products belonging to a specific shop
     if request.user.role == 'OWNER' and location_id:
-        # distinct() is needed because a product might have multiple batches in one location
-        products = products.filter(batches__location_id=location_id, batches__quantity__gt=0).distinct()
+        products = products.filter(location_id=location_id)
 
     # 3. Sorting
     products = products.order_by('-created_at')
@@ -85,6 +88,11 @@ def product_detail(request, pk):
     """
     product = get_object_or_404(Product, pk=pk)
 
+    # Multi-tenant scoping: only the owning shop (or an owner) may view it.
+    if request.user.role != 'OWNER' and product.location_id != request.user.assigned_location_id:
+        messages.error(request, "That product belongs to another shop.")
+        return redirect('products:product_list')
+
     # Get Stock Summary per Location
     # This shows "Shop A: 50 units", "Warehouse: 100 units"
     stock_summary = StockBatch.objects.filter(
@@ -117,14 +125,20 @@ def product_create(request):
     """
     Create a new product definition.
     """
+    is_owner = request.user.role == 'OWNER'
     if request.method == 'POST':
         form = ProductForm(request.POST, request.FILES)
+        if not is_owner:
+            form.fields.pop('location', None)  # managers can't reassign shops
+            form.instance.location = request.user.assigned_location  # set before validation
         if form.is_valid():
             product = form.save()
             messages.success(request, f"Product '{product.name}' created successfully.")
             return redirect('products:product_list')
     else:
         form = ProductForm()
+        if not is_owner:
+            form.fields.pop('location', None)
 
     return render(request, 'products/product_form.html', {'form': form, 'category_form': CategoryForm(), 'title': 'Add New Product'})
 
@@ -136,14 +150,26 @@ def product_edit(request, pk):
     Update existing product details.
     """
     product = get_object_or_404(Product, pk=pk)
+    is_owner = request.user.role == 'OWNER'
+
+    # Managers may only edit their own shop's products.
+    if not is_owner and product.location_id != request.user.assigned_location_id:
+        messages.error(request, "That product belongs to another shop.")
+        return redirect('products:product_list')
+
     if request.method == 'POST':
         form = ProductForm(request.POST, request.FILES, instance=product)
+        if not is_owner:
+            form.fields.pop('location', None)
+            form.instance.location = request.user.assigned_location
         if form.is_valid():
             form.save()
             messages.success(request, f"Product '{product.name}' updated.")
             return redirect('products:product_list')
     else:
         form = ProductForm(instance=product)
+        if not is_owner:
+            form.fields.pop('location', None)
 
     return render(request, 'products/product_form.html', {'form': form, 'title': f'Edit {product.name}'})
 
