@@ -1,5 +1,33 @@
+import secrets
+import string
+
 from django import forms
+from django.contrib.auth.password_validation import validate_password
 from .models import User, UserProfile
+
+
+def generate_temp_password(length=10):
+    """Generate a readable, reasonably strong temporary password."""
+    # Exclude easily-confused characters (0/O, 1/l/I) so staff can read it aloud.
+    alphabet = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+class AdminPasswordResetForm(forms.Form):
+    """
+    Used by an Owner/Manager to set a temporary password for a staff member.
+    The staff member is then forced to change it on their next login.
+    """
+    new_password = forms.CharField(
+        label="Temporary password",
+        widget=forms.TextInput(attrs={'autocomplete': 'off'}),
+        help_text="Read this out to the staff member. They will be forced to change it on next login.",
+    )
+
+    def clean_new_password(self):
+        password = self.cleaned_data['new_password']
+        validate_password(password)
+        return password
 
 
 class StaffCreationForm(forms.ModelForm):

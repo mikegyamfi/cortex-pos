@@ -12,6 +12,9 @@ urlpatterns = [
     # Forced Password Change (For new accounts)
     path('force-password-change/', views.ForcePasswordChangeView.as_view(), name='force_password_change'),
 
+    # Self-service password change (any logged-in user)
+    path('password-change/', views.SelfPasswordChangeView.as_view(), name='password_change'),
+
     # Standard Password Reset (Forgot Password)
     path('password-reset/',
          PasswordResetView.as_view(
@@ -41,6 +44,7 @@ urlpatterns = [
     path('staff/', views.staff_list, name='list'),
     path('staff/add/', views.staff_create, name='create'),
     path('staff/edit/<int:pk>/', views.staff_edit, name='edit'),
+    path('staff/reset-password/<int:pk>/', views.staff_reset_password, name='reset_password'),
 ]
 
 

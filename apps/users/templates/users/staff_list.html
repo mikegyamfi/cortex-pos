@@ -22,7 +22,7 @@
                     <th>Assigned Location</th>
                     <th>Contact</th>
                     <th>Status</th>
-                    {% if user.role == 'OWNER' %}
+                    {% if user.role == 'OWNER' or user.role == 'MANAGER' %}
                     <th>Actions</th>
                     {% endif %}
                 </tr>
@@ -68,11 +68,20 @@
                             <i class="ri-error-warning-fill text-warning ms-1" title="Pending Password Change"></i>
                         {% endif %}
                     </td>
-                    {% if user.role == 'OWNER' %}
+                    {% if user.role == 'OWNER' or user.role == 'MANAGER' %}
                     <td>
+                        {% if user.role == 'OWNER' %}
                         <a href="{% url 'users:edit' staff_member.pk %}" class="btn btn-sm btn-icon btn-text-secondary rounded-pill" title="Edit Staff">
-                            <i class="ri-pencil-line"></i>
+                            <i class="ri ri-pencil-line"></i>
                         </a>
+                        {% endif %}
+                        {% if staff_member.pk != user.pk %}
+                            {% if user.role == 'OWNER' or not staff_member.is_owner %}
+                            <a href="{% url 'users:reset_password' staff_member.pk %}" class="btn btn-sm btn-icon btn-text-secondary rounded-pill" title="Reset Password">
+                                <i class="ri ri-key-2-line"></i>
+                            </a>
+                            {% endif %}
+                        {% endif %}
                     </td>
                     {% endif %}
                 </tr>
