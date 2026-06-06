@@ -1,14 +1,21 @@
 import os
+import sys
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 from .base import *
 
 DEBUG = False
 
-# Refuse to start in production without an explicit secret key.
+# Refuse to start in production without an explicit secret key — EXCEPT during
+# the build's `collectstatic`, which doesn't use the key. This lets the Heroku
+# build compile even if the key isn't set yet; real requests and `migrate`
+# still require a proper DJANGO_SECRET_KEY.
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
-    raise ImproperlyConfigured("DJANGO_SECRET_KEY environment variable must be set in production.")
+    if 'collectstatic' in sys.argv:
+        SECRET_KEY = 'insecure-build-only-key-do-not-use-for-serving'
+    else:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY environment variable must be set in production.")
 
 # --- Hosts / CSRF --------------------------------------------------------
 # Always allow the Heroku app domain; add custom domains via ALLOWED_HOSTS env
