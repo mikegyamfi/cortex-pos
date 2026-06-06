@@ -108,6 +108,15 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# WhiteNoise compressed static storage (Django 5+ STORAGES API). Defined here
+# so `collectstatic` works the same regardless of which settings module runs
+# it. Non-manifest = no staticfiles.json needed at runtime, so it never breaks
+# the build over a missing hashed-asset reference.
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
+
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 

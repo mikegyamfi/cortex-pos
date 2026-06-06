@@ -39,13 +39,8 @@ else:
         }
     }
 
-# --- Static files (WhiteNoise, Django 5+ STORAGES API) -------------------
-# Non-manifest compressed storage: robust to collectstatic running under any
-# settings module and never needs a staticfiles.json manifest at runtime.
-STORAGES = {
-    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
-    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
-}
+# Static files (WhiteNoise) are configured in base.py so the build behaves the
+# same no matter which settings module runs collectstatic.
 
 # --- Security ------------------------------------------------------------
 # Heroku terminates TLS at its router and forwards the original scheme here.
