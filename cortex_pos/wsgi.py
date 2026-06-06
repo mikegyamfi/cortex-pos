@@ -11,6 +11,8 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'cortex_pos.settings.local')
+# Production is the default for the deployed server (Heroku web dyno). A
+# DJANGO_SETTINGS_MODULE config var, if set, still takes precedence.
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'cortex_pos.settings.production')
 
 application = get_wsgi_application()

@@ -91,9 +91,13 @@
                             <td>{{ batch.cost_price|intcomma }}</td>
                             <td>{{ batch.expiry_date|date:"d M Y" }}</td>
                             <td class="text-center">
-                                <a href="{% url 'inventory:batch_detail' batch.pk %}" class="btn btn-sm btn-outline-info" title="View Batch History">
-                                    <i class="ri:eye-line">View</i>
-                                </a>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-info batch-quickview-btn"
+                                        data-batch-id="{{ batch.pk }}"
+                                        data-batch-label="{{ batch.product.name }} — {{ batch.batch_number|default:'No Batch' }}"
+                                        title="Quick view">
+                                    <i class="ri-eye-line"></i> View
+                                </button>
                             </td>
                         </tr>
                         {% empty %}
@@ -107,4 +111,63 @@
         </div>
     </div>
 </div>
+
+<!-- Batch Quick View Modal -->
+<div class="modal fade" id="batchQuickviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="batchQuickviewTitle">Stock Batch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="batchQuickviewBody">
+                <div class="text-center py-5 text-muted">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <div class="mt-2">Loading...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="#" id="batchQuickviewFullLink" class="btn btn-outline-primary">
+                    <i class="ri-external-link-line me-1"></i> Full Audit Page
+                </a>
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        const modalEl = document.getElementById('batchQuickviewModal');
+        if (!modalEl) return;
+        const modal = new bootstrap.Modal(modalEl);
+        const titleEl = document.getElementById('batchQuickviewTitle');
+        const bodyEl = document.getElementById('batchQuickviewBody');
+        const fullLinkEl = document.getElementById('batchQuickviewFullLink');
+        const loadingHtml = bodyEl.innerHTML;
+
+        document.querySelectorAll('.batch-quickview-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.dataset.batchId;
+                const label = btn.dataset.batchLabel || 'Stock Batch';
+                titleEl.textContent = label;
+                fullLinkEl.href = `/inventory/batch/${id}/`;
+                bodyEl.innerHTML = loadingHtml;
+                modal.show();
+                try {
+                    const res = await fetch(`/inventory/batch/${id}/?partial=1`, {
+                        credentials: 'same-origin',
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    if (!res.ok) throw new Error(res.statusText);
+                    bodyEl.innerHTML = await res.text();
+                } catch (err) {
+                    bodyEl.innerHTML = `<div class="alert alert-danger mb-0">Failed to load batch details: ${err.message}</div>`;
+                }
+            });
+        });
+    })();
+</script>
 {% endblock %}

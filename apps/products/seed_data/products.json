@@ -1,0 +1,342 @@
+[
+  {
+    "sku": "R415",
+    "name": "ERLA SATO 50ml GOOD MORNING",
+    "unit": "Piece"
+  },
+  {
+    "sku": "R420",
+    "name": "ERLA ONE SHOT MIX 600ml",
+    "unit": "Piece"
+  },
+  {
+    "sku": "R422",
+    "name": "ERLA ONE SHOT SANDALWOOD 600ml",
+    "unit": "Piece"
+  },
+  {
+    "sku": "M115LM",
+    "name": "CAYON LEMON 700ml",
+    "unit": "Piece"
+  },
+  {
+    "sku": "M115SM",
+    "name": "CAYON STRAWBERRY 700ml",
+    "unit": "Piece"
+  },
+  {
+    "sku": "M115VM",
+    "name": "CAYON VANILLA 700ml",
+    "unit": "Piece"
+  },
+  {
+    "sku": "V87DIS",
+    "name": "FLORIDA SCENT DISPLAY MIX",
+    "unit": "Piece"
+  },
+  {
+    "sku": "V130",
+    "name": "K2 NIXO MIX",
+    "unit": "Piece"
+  },
+  {
+    "sku": "V131",
+    "name": "K2 NIXO BRAVE",
+    "unit": "Piece"
+  },
+  {
+    "sku": "V133",
+    "name": "K2 NIXO WAVE",
+    "unit": "Piece"
+  },
+  {
+    "sku": "V134",
+    "name": "K2 NIXO MOONFLOWER",
+    "unit": "Piece"
+  },
+  {
+    "sku": "V350",
+    "name": "K2 POCO MIX",
+    "unit": "Piece"
+  },
+  {
+    "sku": "V351",
+    "name": "K2 POCO NEW CAR",
+    "unit": "Piece"
+  },
+  {
+    "sku": "V352",
+    "name": "K2 POCO MAN",
+    "unit": "Piece"
+  },
+  {
+    "sku": "V353",
+    "name": "K2 POCO SWEET CANDY",
+    "unit": "Piece"
+  },
+  {
+    "sku": "V354",
+    "name": "K2 POCO CHERRY",
+    "unit": "Piece"
+  },
+  {
+    "sku": "V370",
+    "name": "K2 NEONE MIX",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D0222",
+    "name": "LUSSY PRO 40x40",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D0224",
+    "name": "TWISTY PRO 40x40",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D0225",
+    "name": "TWISTON PRO 60x90",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D5001",
+    "name": "K2 SATINA PRO 1L blueberry,sat",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D5011",
+    "name": "K2 SATINA PRO 1L sunset fresh,",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D5021",
+    "name": "K2 SATINA PRO 1L energy fruit,",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D7001",
+    "name": "MIXER 1L",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D1101",
+    "name": "K2 SIGMA PRO 1L dressing do ko",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D0101",
+    "name": "K2 BELA PRO 1L blueberry,neutr",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D0111",
+    "name": "K2 BELA PRO 1L sunset fresh,ne",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D01211",
+    "name": "BELA PRO 1L energy fruit",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D0001",
+    "name": "K2 APC NEUTRAL PRO 1L PL neutr",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D4002",
+    "name": "NUTA PRO 750ml",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D7010",
+    "name": "SCEPTER BRUSH",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D7020",
+    "name": "K2 WIADRO WASH 20L szare",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D7021",
+    "name": "K2 WIADRO RINSE 20L niebieskie",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D7022",
+    "name": "K2 SEPARATOR BRUDU",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D7040",
+    "name": "K2 TRACO aplikator do dressing",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D7900",
+    "name": "V APRON",
+    "unit": "Piece"
+  },
+  {
+    "sku": "D7903",
+    "name": "V APRON refill 600ml",
+    "unit": "Piece"
+  },
+  {
+    "sku": "G410",
+    "name": "OMEGA 500ml",
+    "unit": "Piece"
+  },
+  {
+    "sku": "ET3111",
+    "name": "K2 BENZIN 50ML GB",
+    "unit": "Piece"
+  },
+  {
+    "sku": "K150",
+    "name": "BONO 300 AERO",
+    "unit": "Piece"
+  },
+  {
+    "sku": "K035",
+    "name": "K2 BONO BLACK 500ML",
+    "unit": "Piece"
+  },
+  {
+    "sku": "ET3122",
+    "name": "DIESEL 50ML",
+    "unit": "Piece"
+  },
+  {
+    "sku": "EK145",
+    "name": "EXPRESS PLUS 5 - yellow",
+    "unit": "Piece"
+  },
+  {
+    "sku": "T205C",
+    "name": "KULER -35C 5L RED G12/G12+",
+    "unit": "Piece"
+  },
+  {
+    "sku": "T205N",
+    "name": "KULER -35C 5L BLUE G11",
+    "unit": "Piece"
+  },
+  {
+    "sku": "T211C",
+    "name": "KULER KONC. 1L RED",
+    "unit": "Piece"
+  },
+  {
+    "sku": "T377",
+    "name": "OIL STOP LEAK 50ml",
+    "unit": "Piece"
+  },
+  {
+    "sku": "AZ100",
+    "name": "CARDOS PIANOWNICA 2L",
+    "unit": "Piece"
+  },
+  {
+    "sku": "L611",
+    "name": "DURAFLEX - velcro foam pad -",
+    "unit": "Piece"
+  },
+  {
+    "sku": "L612",
+    "name": "DURAFLEX - velcro foam pad -",
+    "unit": "Piece"
+  },
+  {
+    "sku": "L614",
+    "name": "DURAFLEX - velcro foam pad - b",
+    "unit": "Piece"
+  },
+  {
+    "sku": "W6810",
+    "name": "Floor jack",
+    "unit": "Piece"
+  },
+  {
+    "sku": "M100",
+    "name": "ACTIVE FOAM 5",
+    "unit": "Piece"
+  },
+  {
+    "sku": "M314",
+    "name": "DETAILING BRUSH - 8mm",
+    "unit": "Piece"
+  },
+  {
+    "sku": "M315",
+    "name": "DETAILING BRUSH - 16mm",
+    "unit": "Piece"
+  },
+  {
+    "sku": "M324",
+    "name": "K2 DETAILING PĘDZEL STRONG 12",
+    "unit": "Piece"
+  },
+  {
+    "sku": "M325",
+    "name": "K2 DETAILING PĘDZEL STRONG 16",
+    "unit": "Piece"
+  },
+  {
+    "sku": "M451",
+    "name": "PERFEKTOR BLACK",
+    "unit": "Piece"
+  },
+  {
+    "sku": "M415",
+    "name": "FOMA 2L FOAM SPRAYER",
+    "unit": "Piece"
+  },
+  {
+    "sku": "O1131E",
+    "name": "K2 5W40 XN 1L SN",
+    "unit": "Piece"
+  },
+  {
+    "sku": "O1401E",
+    "name": "K2 5W30 XL 1L SL/CF/CF-4",
+    "unit": "Piece"
+  },
+  {
+    "sku": "O1501E",
+    "name": "K2 5W30 XN 1L SN C2/C3",
+    "unit": "Piece"
+  },
+  {
+    "sku": "O2041E",
+    "name": "K2 10W40 XL 1L SL/CF/CF-4",
+    "unit": "Piece"
+  },
+  {
+    "sku": "O2051E",
+    "name": "K2 10W40 XL-TD 1L SL/CF/CF-4",
+    "unit": "Piece"
+  },
+  {
+    "sku": "O2055E",
+    "name": "K2 10W40 XL-TD 5L SL/CF/CF-4",
+    "unit": "Piece"
+  },
+  {
+    "sku": "O5731E",
+    "name": "K2 ATF III 1L",
+    "unit": "Piece"
+  },
+  {
+    "sku": "O5771E",
+    "name": "K2 ATF VI 1L",
+    "unit": "Piece"
+  },
+  {
+    "sku": "T351",
+    "name": "K2 SMOKE ELIMINATOR 355 zmniej",
+    "unit": "Piece"
+  }
+]

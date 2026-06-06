@@ -194,6 +194,11 @@ class SalePayment(TimeStampedModel):
                                     help_text="Transaction ID, Cheque Number, or Receipt Ref")
     processed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
 
+    # True when this payment settles arrears on an existing sale (recorded via
+    # add_payment) rather than being part of the original sale. Drives the
+    # Arrears Payment Log.
+    is_settlement = models.BooleanField(default=False)
+
     def __str__(self):
         return f"{self.payment_method}: {self.amount} for {self.sale.invoice_number}"
 

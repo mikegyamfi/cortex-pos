@@ -1,5 +1,15 @@
 from django import forms
-from .models import Expense, ExpenseCategory
+from .models import Expense, ExpenseCategory, RevenueTarget
+
+
+class RevenueTargetForm(forms.ModelForm):
+    class Meta:
+        model = RevenueTarget
+        fields = ['location', 'period', 'target_amount', 'start_date', 'end_date', 'is_active']
+        widgets = {
+            'start_date': forms.DateInput(attrs={'type': 'date'}),
+            'end_date': forms.DateInput(attrs={'type': 'date'}),
+        }
 
 
 class ExpenseForm(forms.ModelForm):

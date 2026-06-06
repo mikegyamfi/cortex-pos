@@ -21,18 +21,18 @@
 
 <!-- Items -->
 <div class="print-row print-bold">
-    <span style="flex:2;">Item</span>
-    <span style="flex:1; text-align: center;">Qty</span>
-    <span style="flex:1; text-align: right;">Total</span>
+    <span class="print-col-name">Item</span>
+    <span class="print-col-qty">Qty</span>
+    <span class="print-col-total">Total</span>
 </div>
 
 {% for item in sale.items.all %}
-<div style="margin-bottom: 2px;">
-    <div>{{ item.product.name }}</div>
+<div class="print-item">
+    <div class="print-item-name">{{ item.product.name }}</div>
     <div class="print-row">
-        <span style="flex:2; font-size:10px;">@ {{ item.unit_price|intcomma }}</span>
-        <span style="flex:1; text-align: center;">{{ item.quantity }}</span>
-        <span style="flex:1; text-align: right;">{{ item.total_price|intcomma }}</span>
+        <span class="print-col-name" style="font-size:10px;">@ {{ item.unit_price|intcomma }}</span>
+        <span class="print-col-qty">{{ item.quantity }}</span>
+        <span class="print-col-total">{{ item.total_price|intcomma }}</span>
     </div>
 </div>
 {% endfor %}

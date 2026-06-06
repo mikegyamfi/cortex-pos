@@ -9,11 +9,13 @@ from django.db.models import Q, Sum
 
 from .models import StockBatch, StockTransfer, StockTransferItem, StockAdjustment
 from .forms import StockReceiveForm, StockTransferForm, StockTransferItemForm, StockAdjustmentForm
+from apps.core.decorators import role_required, INVENTORY_STAFF
 from apps.location.models import Location
 from ..sales.models import SaleItem
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 def inventory_dashboard(request):
     """
     Inventory Dashboard.
@@ -55,6 +57,7 @@ def inventory_dashboard(request):
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 def receive_stock(request):
     """
     Goods Received Note (GRN) View.
@@ -84,6 +87,7 @@ def receive_stock(request):
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 def batch_detail(request, pk):
     """
     Complete Audit History for a specific Stock Batch.
@@ -118,10 +122,13 @@ def batch_detail(request, pk):
         'total_sold': total_sold,
         'total_adjusted': total_adjusted,
     }
+    if request.GET.get('partial'):
+        return render(request, 'inventory/partials/_batch_quickview.html', context)
     return render(request, 'inventory/batch_detail.html', context)
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 @transaction.atomic
 def create_transfer(request):
     """
@@ -170,6 +177,7 @@ def create_transfer(request):
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 def transfer_list(request):
     """
     History of Stock Movements.
@@ -190,6 +198,7 @@ def transfer_list(request):
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 def transfer_detail(request, pk):
     """
     Read-Only view for any transfer (Completed, Pending, etc.)
@@ -233,15 +242,19 @@ def transfer_detail(request, pk):
                 'shortfall': False
             })
 
-    # Reuse the same template but we won't show the 'Process' buttons
-    return render(request, 'inventory/transfer_detail.html', {
+    context = {
         'transfer': transfer,
         'processed_items': processed_items,
         'read_only': False  # We will use this flag in the template
-    })
+    }
+    if request.GET.get('partial'):
+        return render(request, 'inventory/partials/_transfer_quickview.html', context)
+    # Reuse the same template but we won't show the 'Process' buttons
+    return render(request, 'inventory/transfer_detail.html', context)
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 @transaction.atomic
 def process_transfer(request, pk):
     """
@@ -321,6 +334,7 @@ def process_transfer(request, pk):
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 @transaction.atomic
 def receive_transfer(request, pk):
     """
@@ -374,6 +388,7 @@ def receive_transfer(request, pk):
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 @transaction.atomic
 def stock_adjustments(request):
     """
@@ -421,6 +436,7 @@ def stock_adjustments(request):
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 def expiry_alerts(request):
     """
     View for managing expiring stock.

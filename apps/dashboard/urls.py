@@ -10,4 +10,8 @@ urlpatterns = [
 
     # Explicit Dashboard Views (in case they want to navigate back)
     path('analytics/', views.owner_analytics, name='analytics'),
+
+    # Intelligence
+    path('reports/', views.business_reports, name='reports'),
+    path('staff-performance/', views.staff_performance, name='staff_performance'),
 ]

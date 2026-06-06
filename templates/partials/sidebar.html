@@ -71,6 +71,16 @@
             </a>
           </li>
           <li class="menu-item">
+            <a href="{% url 'sales:arrears' %}" class="menu-link">
+              <div data-i18n="Arrears">Arrears / Debtors</div>
+            </a>
+          </li>
+          <li class="menu-item">
+            <a href="{% url 'sales:arrears_log' %}" class="menu-link">
+              <div data-i18n="Arrears Log">Arrears Payment Log</div>
+            </a>
+          </li>
+          <li class="menu-item">
             <a href="{% url 'sales:deliveries' %}" class="menu-link">
               <div data-i18n="Deliveries">Deliveries (Yango/Uber)</div>
             </a>
@@ -185,19 +195,19 @@
     <li class="menu-header mt-7"><span class="menu-header-text">Intelligence</span></li>
 
     <li class="menu-item">
-        <a href="" class="menu-link">
+        <a href="{% url 'dashboard:reports' %}" class="menu-link">
           <i class="menu-icon icon-base ri ri-pie-chart-2-line"></i>
           <div data-i18n="Reports">Business Reports</div>
         </a>
     </li>
     <li class="menu-item">
-        <a href="" class="menu-link">
+        <a href="{% url 'dashboard:staff_performance' %}" class="menu-link">
           <i class="menu-icon icon-base ri ri-user-star-line"></i>
           <div data-i18n="Staff Performance">Staff Performance</div>
         </a>
     </li>
     <li class="menu-item">
-        <a href="" class="menu-link">
+        <a href="{% url 'notifications:log' %}" class="menu-link">
           <i class="menu-icon icon-base ri ri-notification-3-line"></i>
           <div data-i18n="SMS Logs">SMS/Email Logs</div>
         </a>
@@ -217,7 +227,7 @@
         </a>
         <ul class="menu-sub">
           <li class="menu-item">
-            <a href="" class="menu-link">
+            <a href="{% url 'location:list' %}" class="menu-link">
               <div data-i18n="Locations">Warehouses & Shops</div>
             </a>
           </li>
@@ -227,12 +237,12 @@
             </a>
           </li>
           <li class="menu-item">
-            <a href="" class="menu-link">
+            <a href="{% url 'finance:targets' %}" class="menu-link">
               <div data-i18n="Targets">Set Targets</div>
             </a>
           </li>
           <li class="menu-item">
-            <a href="" class="menu-link" target="_blank">
+            <a href="/admin/" class="menu-link" target="_blank">
               <div data-i18n="System Admin">Django Admin</div>
             </a>
           </li>

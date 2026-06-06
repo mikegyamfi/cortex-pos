@@ -6,7 +6,7 @@ from django.urls import reverse_lazy
 from django.contrib import messages
 
 from .forms import StaffUpdateForm, StaffCreationForm, UserProfileForm
-from apps.users.models import User
+from apps.users.models import User, UserProfile
 
 
 class CustomLoginView(LoginView):
@@ -36,14 +36,6 @@ class ForcePasswordChangeView(LoginRequiredMixin, PasswordChangeView):
         self.request.user.save()
         messages.success(self.request, "Password changed successfully. Welcome!")
         return super().form_valid(form)
-
-
-@login_required
-def staff_list(request):
-    """
-    Placeholder for staff management view.
-    """
-    return render(request, 'users/staff_list.html')
 
 
 @login_required

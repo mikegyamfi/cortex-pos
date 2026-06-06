@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Revenue Targets | Cortex POS{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="fw-bold mb-0">Revenue Targets</h4>
+        <p class="text-muted mb-0">Track performance against your goals</p>
+    </div>
+    {% if user.role == 'OWNER' %}
+    <a href="{% url 'finance:target_create' %}" class="btn btn-primary"><i class="ri ri-add-line me-1"></i> Set Target</a>
+    {% endif %}
+</div>
+
+<div class="row g-4">
+    {% for row in rows %}
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <h5 class="mb-0">{{ row.target.location.name }}</h5>
+                        <small class="text-muted">{{ row.target.get_period_display }} &middot; from {{ row.target.start_date|date:"d M Y" }}{% if row.target.end_date %} to {{ row.target.end_date|date:"d M Y" }}{% endif %}</small>
+                    </div>
+                    {% if row.met %}
+                        <span class="badge bg-label-success"><i class="ri ri-checkbox-circle-line me-1"></i> Achieved</span>
+                    {% else %}
+                        <span class="badge bg-label-primary">{{ row.pct }}%</span>
+                    {% endif %}
+                </div>
+
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="text-muted">Achieved</span>
+                    <span class="fw-bold">{{ row.actual|floatformat:2|intcomma }} / {{ row.target.target_amount|floatformat:2|intcomma }}</span>
+                </div>
+                <div class="progress mb-3" style="height: 10px;">
+                    <div class="progress-bar {% if row.met %}bg-success{% else %}bg-primary{% endif %}" role="progressbar" style="width: {{ row.pct_bar }}%"></div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted">Remaining: <span class="fw-bold text-dark">{{ row.remaining|floatformat:2|intcomma }}</span></small>
+                    {% if user.role == 'OWNER' %}
+                    <form method="post" action="{% url 'finance:target_delete' row.target.pk %}" onsubmit="return confirm('Archive this target?');">
+                        {% csrf_token %}
+                        <button class="btn btn-sm btn-outline-danger"><i class="ri ri-archive-line"></i></button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="card"><div class="card-body text-center py-5 text-muted">
+            <i class="ri ri-flag-line" style="font-size:3rem;"></i>
+            <h5 class="mt-3">No active targets</h5>
+            {% if user.role == 'OWNER' %}<a href="{% url 'finance:target_create' %}" class="btn btn-primary mt-2">Set your first target</a>{% endif %}
+        </div></div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

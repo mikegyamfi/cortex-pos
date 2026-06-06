@@ -1,0 +1,98 @@
+{% load humanize %}
+<div class="row g-3 mb-3">
+    <div class="col-6">
+        <div class="border rounded p-2 text-center">
+            <small class="text-muted d-block">Quantity</small>
+            <h4 class="mb-0 text-primary">{{ batch.quantity }}</h4>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="border rounded p-2 text-center">
+            <small class="text-muted d-block">Expiry</small>
+            {% if batch.expiry_date %}
+                <h6 class="mb-0 {% if batch.days_to_expiry < 30 %}text-danger{% endif %}">
+                    {{ batch.expiry_date|date:"d M Y" }}
+                </h6>
+                <small class="text-muted">{{ batch.days_to_expiry }} days left</small>
+            {% else %}
+                <h6 class="mb-0 text-success">N/A</h6>
+                <small class="text-muted">Non-perishable</small>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<dl class="row mb-3 small">
+    <dt class="col-5 text-muted fw-medium">Product</dt>
+    <dd class="col-7 fw-bold">{{ batch.product.name }}</dd>
+
+    <dt class="col-5 text-muted fw-medium">SKU</dt>
+    <dd class="col-7">{{ batch.product.sku }}</dd>
+
+    <dt class="col-5 text-muted fw-medium">Location</dt>
+    <dd class="col-7">{{ batch.location.name }}</dd>
+
+    <dt class="col-5 text-muted fw-medium">Batch #</dt>
+    <dd class="col-7">{{ batch.batch_number|default:"-" }}</dd>
+
+    <dt class="col-5 text-muted fw-medium">Supplier</dt>
+    <dd class="col-7">{{ batch.supplier.name|default:"-" }}</dd>
+
+    <dt class="col-5 text-muted fw-medium">Cost / unit</dt>
+    <dd class="col-7">{{ batch.cost_price|intcomma }}</dd>
+
+    <dt class="col-5 text-muted fw-medium">Received</dt>
+    <dd class="col-7">{{ batch.received_date|date:"d M Y" }}</dd>
+</dl>
+
+<h6 class="text-uppercase text-muted small mb-2">Recent Sales ({{ total_sold }} units total)</h6>
+<div class="table-responsive border rounded mb-3" style="max-height: 220px; overflow-y: auto;">
+    <table class="table table-sm table-hover mb-0">
+        <thead class="table-light" style="position: sticky; top: 0;">
+            <tr>
+                <th>Invoice</th>
+                <th>Date</th>
+                <th class="text-end">Qty</th>
+                <th class="text-end">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in sales_items|slice:":15" %}
+            <tr>
+                <td><small class="fw-bold">#{{ item.sale.invoice_number|slice:":8" }}</small></td>
+                <td><small>{{ item.sale.created_at|date:"d M, H:i" }}</small></td>
+                <td class="text-end">{{ item.quantity }}</td>
+                <td class="text-end fw-medium">{{ item.total_price|intcomma }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="text-center text-muted py-3">No sales yet from this batch.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if adjustments %}
+<h6 class="text-uppercase text-muted small mb-2">Adjustments</h6>
+<div class="table-responsive border rounded" style="max-height: 160px; overflow-y: auto;">
+    <table class="table table-sm mb-0">
+        <thead class="table-light" style="position: sticky; top: 0;">
+            <tr>
+                <th>Date</th>
+                <th>Reason</th>
+                <th class="text-end">Qty</th>
+                <th>By</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for adj in adjustments|slice:":10" %}
+            <tr>
+                <td><small>{{ adj.created_at|date:"d M y" }}</small></td>
+                <td><span class="badge bg-label-secondary">{{ adj.get_reason_display }}</span></td>
+                <td class="text-end fw-bold {% if adj.adjusted_quantity < 0 %}text-danger{% else %}text-success{% endif %}">{{ adj.adjusted_quantity }}</td>
+                <td><small>{{ adj.performed_by.username }}</small></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}

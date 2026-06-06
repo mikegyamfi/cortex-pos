@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Arrears Payment Log | Cortex POS{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
+    <div>
+        <h4 class="fw-bold mb-0">Arrears Payment Log</h4>
+        <p class="text-muted mb-0">Every payment collected against outstanding debt</p>
+    </div>
+    <div class="d-flex gap-2 mt-3 mt-md-0">
+        <a href="{% url 'sales:arrears' %}" class="btn btn-outline-secondary"><i class="ri ri-group-line me-1"></i> Debtors</a>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Search</label>
+                <input type="text" class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Customer, phone or invoice…">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">From</label>
+                <input type="date" class="form-control form-control-sm" name="start_date" value="{{ filters.start_date }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">To</label>
+                <input type="date" class="form-control form-control-sm" name="end_date" value="{{ filters.end_date }}">
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+                <a href="{% url 'sales:arrears_log' %}" class="btn btn-outline-secondary btn-sm">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Summary -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card border-start border-success border-4">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="fw-semibold text-success d-block mb-1">Total Collected (filtered)</span>
+                    <h3 class="mb-0">{{ total_collected|floatformat:2|intcomma }}</h3>
+                </div>
+                <div class="avatar bg-label-success rounded p-2"><i class="ri ri-hand-coin-line" style="font-size:1.5rem;"></i></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-start border-primary border-4">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="fw-semibold text-primary d-block mb-1">Payments Logged</span>
+                    <h3 class="mb-0">{{ count }}</h3>
+                </div>
+                <div class="avatar bg-label-primary rounded p-2"><i class="ri ri-file-list-3-line" style="font-size:1.5rem;"></i></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ledger -->
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Date &amp; Time</th>
+                    <th>Customer</th>
+                    <th>Invoice</th>
+                    <th>Method</th>
+                    <th>Received By</th>
+                    <th>Location</th>
+                    <th class="text-end">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in payments %}
+                <tr>
+                    <td>{{ p.created_at|date:"d M Y, H:i" }}</td>
+                    <td>{% if p.sale.customer %}{{ p.sale.customer.get_display_name }}<br><small class="text-muted">{{ p.sale.customer.phone_number }}</small>{% else %}<span class="text-muted">Walk-in</span>{% endif %}</td>
+                    <td><a href="{% url 'sales:detail' p.sale.pk %}">#{{ p.sale.invoice_number|slice:":12" }}</a></td>
+                    <td>
+                        {% if p.payment_method == 'CASH' %}<span class="badge bg-label-dark">Cash</span>
+                        {% elif p.payment_method == 'MOMO' %}<span class="badge bg-label-success">MoMo</span>
+                        {% elif p.payment_method == 'CARD' %}<span class="badge bg-label-info">Card</span>
+                        {% else %}<span class="badge bg-label-secondary">{{ p.get_payment_method_display }}</span>{% endif %}
+                    </td>
+                    <td>{{ p.processed_by.username|default:"—" }}</td>
+                    <td>{{ p.sale.location.name }}</td>
+                    <td class="text-end fw-bold text-success">{{ p.amount|floatformat:2|intcomma }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-5">No arrears payments recorded for this filter.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

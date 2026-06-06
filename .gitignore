@@ -1,1 +1,13 @@
 .env
+
+# Markdown docs (CLAUDE.md, DEPLOY.md, etc.)
+*.md
+
+# PDFs (catalogues, exports, etc.)
+*.pdf
+
+# Python / Django
+__pycache__/
+*.pyc
+staticfiles/
+.venv/

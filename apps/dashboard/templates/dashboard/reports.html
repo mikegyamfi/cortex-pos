@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Business Reports | Cortex POS{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h4 class="fw-bold mb-0">Business Reports</h4>
+    <p class="text-muted mb-0">Headline numbers and detailed report shortcuts</p>
+</div>
+
+<!-- Headline revenue -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3 col-6">
+        <div class="card h-100"><div class="card-body">
+            <span class="text-muted d-block mb-1">Today</span>
+            <h4 class="mb-0 text-primary">{{ revenue_today|floatformat:2|intcomma }}</h4>
+        </div></div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card h-100"><div class="card-body">
+            <span class="text-muted d-block mb-1">Last 7 days</span>
+            <h4 class="mb-0">{{ revenue_7d|floatformat:2|intcomma }}</h4>
+        </div></div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card h-100"><div class="card-body">
+            <span class="text-muted d-block mb-1">Last 30 days</span>
+            <h4 class="mb-0">{{ revenue_30d|floatformat:2|intcomma }}</h4>
+        </div></div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card h-100"><div class="card-body">
+            <span class="text-muted d-block mb-1">Transactions (30d)</span>
+            <h4 class="mb-0">{{ transactions_30d|intcomma }}</h4>
+        </div></div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Top products -->
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header border-bottom"><h5 class="mb-0">Top Products (30 days)</h5></div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead><tr><th>Product</th><th class="text-end">Units</th><th class="text-end">Revenue</th></tr></thead>
+                    <tbody>
+                        {% for p in top_products %}
+                        <tr>
+                            <td class="fw-semibold">{{ p.product__name }}</td>
+                            <td class="text-end">{{ p.units|intcomma }}</td>
+                            <td class="text-end fw-bold">{{ p.revenue|floatformat:2|intcomma }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="3" class="text-center text-muted py-4">No sales in the last 30 days.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment mix + shortcuts -->
+    <div class="col-lg-5">
+        <div class="card mb-4">
+            <div class="card-header border-bottom"><h5 class="mb-0">Payment Mix (30 days)</h5></div>
+            <div class="card-body">
+                {% for pm in payment_mix %}
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">{{ pm.payment_method }}</span>
+                    <span class="fw-bold">{{ pm.total|floatformat:2|intcomma }}</span>
+                </div>
+                {% empty %}
+                <p class="text-muted mb-0">No payments yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header border-bottom"><h5 class="mb-0">Detailed Reports</h5></div>
+            <div class="list-group list-group-flush">
+                <a href="{% url 'finance:profit_loss' %}" class="list-group-item list-group-item-action d-flex align-items-center"><i class="ri ri-line-chart-line me-2 text-primary"></i> Profit & Loss</a>
+                <a href="{% url 'finance:tax_report' %}" class="list-group-item list-group-item-action d-flex align-items-center"><i class="ri ri-percent-line me-2 text-primary"></i> Tax Report</a>
+                <a href="{% url 'finance:targets' %}" class="list-group-item list-group-item-action d-flex align-items-center"><i class="ri ri-flag-line me-2 text-primary"></i> Revenue Targets</a>
+                <a href="{% url 'dashboard:staff_performance' %}" class="list-group-item list-group-item-action d-flex align-items-center"><i class="ri ri-user-star-line me-2 text-primary"></i> Staff Performance</a>
+                <a href="{% url 'sales:sessions' %}" class="list-group-item list-group-item-action d-flex align-items-center"><i class="ri ri-cash-line me-2 text-primary"></i> Shift Closures</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

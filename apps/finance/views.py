@@ -5,9 +5,15 @@ from django.db.models import Sum, F
 from django.utils import timezone
 from datetime import timedelta
 
-from .models import Expense, Tax
-from .forms import ExpenseForm
+from decimal import Decimal
+
+from .models import Expense, Tax, RevenueTarget
+from .forms import ExpenseForm, RevenueTargetForm
+from ..core.decorators import role_required, FINANCE_VIEWERS, MANAGEMENT, OWNER
 from ..sales.models import SaleTax, Sale, SaleItem
+
+
+REVENUE_STATUSES = [Sale.Status.COMPLETED, Sale.Status.PARTIAL_REFUND, Sale.Status.REFUNDED]
 
 
 @login_required
@@ -74,16 +80,12 @@ def expense_create(request):
 
 
 @login_required
+@role_required(*MANAGEMENT)
 def expense_approve(request, pk):
     """
     Manager/Owner Action: Approve an expense.
     """
     expense = get_object_or_404(Expense, pk=pk)
-
-    # Security Check
-    if request.user.role not in ['OWNER', 'MANAGER']:
-        messages.error(request, "Unauthorized action.")
-        return redirect('finance:expenses_list')
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -101,14 +103,13 @@ def expense_approve(request, pk):
 
 
 @login_required
+@role_required(*FINANCE_VIEWERS)
 def profit_loss_view(request):
     """
     Real-Time Profit & Loss Statement.
     Formula: Net Profit = (Revenue - Cost of Goods Sold) - Operating Expenses
     """
     user = request.user
-    if user.role not in ['OWNER', 'MANAGER', 'ACCOUNTANT']:
-        return redirect('core:dashboard')
 
     # Date Filtering (Default: This Month)
     today = timezone.now().date()
@@ -125,15 +126,23 @@ def profit_loss_view(request):
     else:
         end_date = today
 
-    # Base Filter: Owner sees all, Manager sees assigned location
+    # Base Filter: Owner sees all, Manager sees assigned location.
+    # Include COMPLETED + PARTIAL_REFUND + REFUNDED — we filter refunded LINE ITEMS
+    # below so a partially-refunded sale still contributes its non-refunded items.
+    revenue_statuses = [
+        Sale.Status.COMPLETED,
+        Sale.Status.PARTIAL_REFUND,
+        Sale.Status.REFUNDED,
+    ]
+
     if user.role == 'OWNER':
-        sales_qs = Sale.objects.filter(status=Sale.Status.COMPLETED)
-        items_qs = SaleItem.objects.filter(sale__status=Sale.Status.COMPLETED)
+        sales_qs = Sale.objects.filter(status__in=revenue_statuses)
+        items_qs = SaleItem.objects.filter(sale__status__in=revenue_statuses, is_refunded=False)
         expenses_qs = Expense.objects.filter(status=Expense.Status.APPROVED)
     else:
         loc = user.assigned_location
-        sales_qs = Sale.objects.filter(location=loc, status=Sale.Status.COMPLETED)
-        items_qs = SaleItem.objects.filter(sale__location=loc, sale__status=Sale.Status.COMPLETED)
+        sales_qs = Sale.objects.filter(location=loc, status__in=revenue_statuses)
+        items_qs = SaleItem.objects.filter(sale__location=loc, sale__status__in=revenue_statuses, is_refunded=False)
         expenses_qs = Expense.objects.filter(location=loc, status=Expense.Status.APPROVED)
 
     # Apply Date Range
@@ -141,11 +150,10 @@ def profit_loss_view(request):
     items_qs = items_qs.filter(sale__created_at__date__range=[start_date, end_date])
     expenses_qs = expenses_qs.filter(date_incurred__range=[start_date, end_date])
 
-    # 1. Total Revenue
-    total_revenue = sales_qs.aggregate(Sum('total_amount'))['total_amount__sum'] or 0
+    # 1. Total Revenue — sum of NON-refunded line items (so partial refunds reduce revenue)
+    total_revenue = items_qs.aggregate(Sum('total_price'))['total_price__sum'] or 0
 
-    # 2. Cost of Goods Sold (COGS)
-    # Calculated from unit_cost stored on SaleItem at time of sale
+    # 2. Cost of Goods Sold (COGS) — same scope as revenue (refunded items aren't sold)
     total_cogs = items_qs.annotate(
         line_cost=F('unit_cost') * F('quantity')
     ).aggregate(Sum('line_cost'))['line_cost__sum'] or 0
@@ -176,24 +184,24 @@ def profit_loss_view(request):
 
 
 @login_required
+@role_required(*FINANCE_VIEWERS)
 def tax_report_view(request):
     """
     Tax Collection Report.
     """
     user = request.user
-    if user.role not in ['OWNER', 'MANAGER', 'ACCOUNTANT']:
-        return redirect('core:dashboard')
 
     # Date Filtering
     today = timezone.now().date()
     start_date = request.GET.get('start_date', today.replace(day=1).strftime("%Y-%m-%d"))
     end_date = request.GET.get('end_date', today.strftime("%Y-%m-%d"))
 
-    # Query Sale Taxes
+    # Query Sale Taxes (include partial/full refund statuses; tax is a snapshot at sale time)
+    revenue_statuses = [Sale.Status.COMPLETED, Sale.Status.PARTIAL_REFUND, Sale.Status.REFUNDED]
     if user.role == 'OWNER':
-        tax_qs = SaleTax.objects.filter(sale__status=Sale.Status.COMPLETED)
+        tax_qs = SaleTax.objects.filter(sale__status__in=revenue_statuses)
     else:
-        tax_qs = SaleTax.objects.filter(sale__location=user.assigned_location, sale__status=Sale.Status.COMPLETED)
+        tax_qs = SaleTax.objects.filter(sale__location=user.assigned_location, sale__status__in=revenue_statuses)
 
     tax_qs = tax_qs.filter(sale__created_at__date__range=[start_date, end_date])
 
@@ -209,6 +217,68 @@ def tax_report_view(request):
         'total_tax_collected': total_tax_collected
     }
     return render(request, 'finance/tax_report.html', context)
+
+
+@login_required
+@role_required(*FINANCE_VIEWERS)
+def target_list(request):
+    """
+    Revenue Targets with live progress against actual (non-refunded) sales.
+    Owners see every location's targets; managers see their own location.
+    """
+    user = request.user
+    targets = RevenueTarget.objects.filter(is_active=True).select_related('location').order_by('-start_date')
+    if user.role != 'OWNER':
+        targets = targets.filter(location=user.assigned_location)
+
+    today = timezone.now().date()
+    rows = []
+    for t in targets:
+        window_end = t.end_date or today
+        actual = SaleItem.objects.filter(
+            sale__location=t.location,
+            sale__status__in=REVENUE_STATUSES,
+            is_refunded=False,
+            sale__created_at__date__range=[t.start_date, min(window_end, today)],
+        ).aggregate(s=Sum('total_price'))['s'] or Decimal('0.00')
+
+        target_amount = t.target_amount or Decimal('0.00')
+        pct = float(actual / target_amount * 100) if target_amount > 0 else 0.0
+        rows.append({
+            'target': t,
+            'actual': actual,
+            'pct': round(min(pct, 999), 1),
+            'pct_bar': round(min(pct, 100), 1),
+            'remaining': max(target_amount - actual, Decimal('0.00')),
+            'met': actual >= target_amount and target_amount > 0,
+        })
+
+    return render(request, 'finance/targets.html', {'rows': rows})
+
+
+@login_required
+@role_required(OWNER)
+def target_create(request):
+    if request.method == 'POST':
+        form = RevenueTargetForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Revenue target created.")
+            return redirect('finance:targets')
+    else:
+        form = RevenueTargetForm(initial={'start_date': timezone.now().date()})
+    return render(request, 'finance/target_form.html', {'form': form, 'title': 'Set Revenue Target'})
+
+
+@login_required
+@role_required(OWNER)
+def target_delete(request, pk):
+    target = get_object_or_404(RevenueTarget, pk=pk)
+    if request.method == 'POST':
+        target.is_active = False
+        target.save()
+        messages.success(request, "Target archived.")
+    return redirect('finance:targets')
 
 
 

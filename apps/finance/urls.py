@@ -14,5 +14,7 @@ urlpatterns = [
     path('tax-reports/', views.tax_report_view, name='tax_report'),
 
     # Targets
-    path('targets/', views.profit_loss_view, name='targets'),  # Placeholder reuse for now
+    path('targets/', views.target_list, name='targets'),
+    path('targets/add/', views.target_create, name='target_create'),
+    path('targets/<int:pk>/delete/', views.target_delete, name='target_delete'),
 ]

@@ -66,9 +66,13 @@
                             {% endif %}
 
                             <!-- 3. VIEW (Always Visible) -->
-                            <a href="{% url 'inventory:transfer_detail' t.pk %}" class="btn btn-sm btn-outline-secondary" title="View Details">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary transfer-quickview-btn"
+                                    data-transfer-id="{{ t.pk }}"
+                                    data-transfer-label="{{ t.reference_number }}"
+                                    title="Quick view">
                                 <i class="ri-eye-line"></i>
-                            </a>
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -81,4 +85,63 @@
         </table>
     </div>
 </div>
+
+<!-- Transfer Quick View Modal -->
+<div class="modal fade" id="transferQuickviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="transferQuickviewTitle">Transfer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="transferQuickviewBody">
+                <div class="text-center py-5 text-muted">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <div class="mt-2">Loading...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="#" id="transferQuickviewFullLink" class="btn btn-outline-primary">
+                    <i class="ri-external-link-line me-1"></i> Open Full Page
+                </a>
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        const modalEl = document.getElementById('transferQuickviewModal');
+        if (!modalEl) return;
+        const modal = new bootstrap.Modal(modalEl);
+        const titleEl = document.getElementById('transferQuickviewTitle');
+        const bodyEl = document.getElementById('transferQuickviewBody');
+        const fullLinkEl = document.getElementById('transferQuickviewFullLink');
+        const loadingHtml = bodyEl.innerHTML;
+
+        document.querySelectorAll('.transfer-quickview-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.dataset.transferId;
+                const label = btn.dataset.transferLabel || 'Transfer';
+                titleEl.textContent = `Transfer ${label}`;
+                fullLinkEl.href = `/inventory/transfers/${id}/view/`;
+                bodyEl.innerHTML = loadingHtml;
+                modal.show();
+                try {
+                    const res = await fetch(`/inventory/transfers/${id}/view/?partial=1`, {
+                        credentials: 'same-origin',
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    if (!res.ok) throw new Error(res.statusText);
+                    bodyEl.innerHTML = await res.text();
+                } catch (err) {
+                    bodyEl.innerHTML = `<div class="alert alert-danger mb-0">Failed to load transfer: ${err.message}</div>`;
+                }
+            });
+        });
+    })();
+</script>
 {% endblock %}

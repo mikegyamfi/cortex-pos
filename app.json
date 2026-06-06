@@ -1,0 +1,30 @@
+{
+  "name": "Cortex POS",
+  "description": "Django point-of-sale / retail management system.",
+  "repository": "",
+  "keywords": ["django", "pos", "retail"],
+  "stack": "heroku-24",
+  "buildpacks": [{ "url": "heroku/python" }],
+  "addons": ["heroku-postgresql:essential-0"],
+  "env": {
+    "DJANGO_SETTINGS_MODULE": {
+      "description": "Settings module — must be production on Heroku.",
+      "value": "cortex_pos.settings.production"
+    },
+    "DJANGO_SECRET_KEY": {
+      "description": "Django secret key.",
+      "generator": "secret"
+    },
+    "ALLOWED_HOSTS": {
+      "description": "Extra comma-separated hostnames (custom domains). .herokuapp.com is always allowed.",
+      "required": false
+    },
+    "EMAIL_HOST": { "description": "SMTP host (optional).", "required": false },
+    "EMAIL_HOST_USER": { "description": "SMTP user (optional).", "required": false },
+    "EMAIL_HOST_PASSWORD": { "description": "SMTP password (optional).", "required": false },
+    "SMS_API_KEY": { "description": "SMS gateway API key (optional).", "required": false }
+  },
+  "scripts": {
+    "postdeploy": "python manage.py migrate --noinput"
+  }
+}

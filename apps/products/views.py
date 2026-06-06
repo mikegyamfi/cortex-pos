@@ -6,11 +6,13 @@ from django.core.paginator import Paginator
 
 from .models import Product, Category, Brand
 from .forms import ProductForm, ProductImageForm, CategoryForm, BrandForm
+from ..core.decorators import role_required, INVENTORY_STAFF, MANAGEMENT
 from ..inventory.models import StockBatch
 from ..location.models import Location
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 def product_list(request):
     """
     The Central Catalog View.
@@ -76,6 +78,7 @@ def product_list(request):
 
 
 @login_required
+@role_required(*INVENTORY_STAFF)
 def product_detail(request, pk):
     """
     Detailed view of a product including stock levels across all locations.
@@ -109,6 +112,7 @@ def product_detail(request, pk):
 
 
 @login_required
+@role_required(*MANAGEMENT)
 def product_create(request):
     """
     Create a new product definition.
@@ -126,6 +130,7 @@ def product_create(request):
 
 
 @login_required
+@role_required(*MANAGEMENT)
 def product_edit(request, pk):
     """
     Update existing product details.
@@ -144,6 +149,7 @@ def product_edit(request, pk):
 
 
 @login_required
+@role_required(*MANAGEMENT)
 def quick_category_create(request):
     """
     HTMX or Modal view to add a category on the fly while creating a product.

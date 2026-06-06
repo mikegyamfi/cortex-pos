@@ -65,14 +65,25 @@
                         </table>
                     </div>
 
-                    <div class="mb-4">
-                        <label for="reason" class="form-label">Reason for Refund</label>
-                        <select name="reason" id="reason" class="form-select">
-                            <option value="Customer Return">Customer Return (Defective)</option>
-                            <option value="Exchange">Exchange</option>
-                            <option value="Mistake">Cashier Mistake</option>
-                            <option value="Other">Other</option>
-                        </select>
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <label for="reason" class="form-label">Reason for Refund</label>
+                            <select name="reason" id="reason" class="form-select">
+                                <option value="Customer Return">Customer Return (Defective)</option>
+                                <option value="Exchange">Exchange</option>
+                                <option value="Mistake">Cashier Mistake</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="refund_method" class="form-label">Refund Method</label>
+                            <select name="refund_method" id="refund_method" class="form-select">
+                                <option value="CASH">Cash (from till)</option>
+                                <option value="MOMO">Mobile Money</option>
+                                <option value="CARD">Card</option>
+                                <option value="BANK">Bank Transfer</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div class="d-flex justify-content-end gap-2">

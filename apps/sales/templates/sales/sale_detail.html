@@ -39,11 +39,17 @@
         }
         #thermal-receipt-content * { visibility: visible; }
 
-        .print-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        .print-row { display: flex; justify-content: space-between; margin-bottom: 2px; gap: 4px; }
+        .print-row > * { min-width: 0; }
         .print-divider { border-bottom: 1px dashed #000; margin: 5px 0; }
         .print-center { text-align: center; }
         .print-bold { font-weight: bold; }
         .print-lg { font-size: 16px; }
+        .print-item { margin-bottom: 4px; }
+        .print-item-name { font-weight: bold; word-wrap: break-word; overflow-wrap: anywhere; word-break: break-word; white-space: normal; line-height: 1.15; }
+        .print-col-qty { flex: 0 0 28px; text-align: center; }
+        .print-col-total { flex: 0 0 60px; text-align: right; }
+        .print-col-name { flex: 1 1 auto; min-width: 0; word-wrap: break-word; overflow-wrap: anywhere; word-break: break-word; }
     }
 
     /* --- SCREEN PREVIEW STYLES (For the Modal) --- */
@@ -65,11 +71,17 @@
         color: black;
         margin: auto;
     }
-    .print-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+    .print-row { display: flex; justify-content: space-between; margin-bottom: 2px; gap: 4px; }
+    .print-row > * { min-width: 0; }
     .print-divider { border-bottom: 1px dashed #ccc; margin: 5px 0; }
     .print-center { text-align: center; }
     .print-bold { font-weight: bold; }
     .print-lg { font-size: 14px; }
+    .print-item { margin-bottom: 4px; }
+    .print-item-name { font-weight: bold; word-wrap: break-word; overflow-wrap: anywhere; word-break: break-word; white-space: normal; line-height: 1.15; }
+    .print-col-qty { flex: 0 0 28px; text-align: center; }
+    .print-col-total { flex: 0 0 60px; text-align: right; }
+    .print-col-name { flex: 1 1 auto; min-width: 0; word-wrap: break-word; overflow-wrap: anywhere; word-break: break-word; }
 </style>
 {% endblock %}
 
@@ -82,11 +94,11 @@
         {% if sale.balance_remaining > 0 %}
         <div class="alert alert-danger d-flex align-items-center justify-content-between shadow-sm" role="alert">
             <div>
-                <i class="ri-error-warning-line me-2"></i>
+                <i class="ri ri-error-warning-line me-2"></i>
                 <strong>Outstanding Balance:</strong> The customer still owes <span class="fs-5 fw-bold">{{ sale.balance_remaining|intcomma }}</span>
             </div>
             <button class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#paymentModal">
-                <i class="ri-hand-coin-line me-1"></i> Settle Debt
+                <i class="ri ri-hand-coin-line me-1"></i> Settle Debt
             </button>
         </div>
         {% endif %}
@@ -98,7 +110,7 @@
                     <div class="mb-4 mb-sm-0">
                         <div class="d-flex align-items-center gap-2 mb-3">
                             <span class="avatar-initial rounded bg-label-primary p-2">
-                                <i class="ri-store-2-fill ri-2x"></i>
+                                <i class="ri ri-store-2-fill ri-2x"></i>
                             </span>
                             <span class="h3 fw-bold mb-0 text-primary">{{ user.assigned_location.name }}</span>
                         </div>
@@ -142,14 +154,27 @@
 
                 <div class="row">
                     <div class="col-md-6 mb-4 mb-md-0">
-                        <div class="p-3 bg-lighter rounded">
-                            <h6 class="mb-2 fw-bold text-muted text-uppercase fs-tiny">Payment Methods</h6>
+                        <div class="p-3 bg-lighter rounded h-100">
+                            <h6 class="mb-3 fw-bold text-muted text-uppercase fs-tiny">Payment Timeline</h6>
                             <ul class="list-unstyled mb-0">
-                                {% for payment in sale.payments.all %}
-                                <li class="d-flex justify-content-between mb-1">
-                                    <span class="fw-medium">{{ payment.get_payment_method_display }}</span>
-                                    <span>{{ payment.amount|intcomma }}</span>
+                                {% for payment in payments %}
+                                <li class="d-flex justify-content-between align-items-start mb-3">
+                                    <div>
+                                        <span class="fw-medium">{{ payment.get_payment_method_display }}</span>
+                                        {% if payment.is_settlement %}
+                                            <span class="badge bg-label-success ms-1">Settlement</span>
+                                        {% elif payment.amount < 0 %}
+                                            <span class="badge bg-label-secondary ms-1">{% if 'REFUND' in payment.reference_id %}Refund{% else %}Change{% endif %}</span>
+                                        {% else %}
+                                            <span class="badge bg-label-primary ms-1">Sale</span>
+                                        {% endif %}
+                                        <br>
+                                        <small class="text-muted">{{ payment.created_at|date:"d M Y, H:i" }}{% if payment.processed_by %} &middot; {{ payment.processed_by.username }}{% endif %}</small>
+                                    </div>
+                                    <span class="fw-semibold {% if payment.amount < 0 %}text-muted{% endif %}">{{ payment.amount|intcomma }}</span>
                                 </li>
+                                {% empty %}
+                                <li class="text-muted">No payments recorded.</li>
                                 {% endfor %}
                             </ul>
                         </div>
@@ -169,8 +194,22 @@
                                 <span class="h5 mb-0">Total:</span>
                                 <span class="h5 mb-0 text-primary">{{ sale.total_amount|intcomma }}</span>
                             </div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-muted">Amount Paid:</span>
+                                <span class="fw-semibold text-success">{{ sale.amount_paid|intcomma }}</span>
+                            </div>
+                            {% if sale.balance_remaining > 0 %}
+                            <div class="d-flex justify-content-between mb-2 p-2 bg-label-danger rounded">
+                                <span class="fw-bold">Balance Due:</span>
+                                <span class="fw-bold">{{ sale.balance_remaining|intcomma }}</span>
+                            </div>
+                            {% else %}
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-success fw-bold"><i class="ri ri-checkbox-circle-line me-1"></i>Fully Paid</span>
+                            </div>
+                            {% endif %}
                             <div class="d-flex justify-content-between text-muted">
-                                <span>Change:</span>
+                                <span>Change Given:</span>
                                 <span>{{ sale.change_due|intcomma }}</span>
                             </div>
                         </div>
@@ -182,13 +221,13 @@
             <div class="card-footer p-4 border-top bg-white rounded-bottom-3">
                 <div class="d-flex justify-content-center gap-3 flex-wrap">
                     <button class="btn btn-outline-secondary btn-lg" data-bs-toggle="modal" data-bs-target="#previewModal">
-                        <i class="ri-file-list-2-line me-2"></i> Thermal Preview
+                        <i class="ri ri-file-list-2-line me-2"></i> Thermal Preview
                     </button>
                     <button class="btn btn-primary btn-lg px-5" onclick="window.print()">
-                        <i class="ri-printer-line me-2"></i> Print Invoice
+                        <i class="ri ri-printer-line me-2"></i> Print Invoice
                     </button>
                     <a href="{% url 'sales:pos' %}" class="btn btn-success btn-lg">
-                        <i class="ri-shopping-cart-2-line me-2"></i> Next Sale
+                        <i class="ri ri-shopping-cart-2-line me-2"></i> Next Sale
                     </a>
                 </div>
             </div>
@@ -208,37 +247,65 @@
             <form action="{% url 'sales:add_payment' sale.pk %}" method="post">
                 {% csrf_token %}
                 <div class="modal-body">
-                    <div class="alert alert-info">
-                        Adding payment to current session ({{ user.username }}).
-                    </div>
-
-                    <label class="form-label">Payment Amount</label>
-                    <div class="input-group mb-3">
-                        <span class="input-group-text">GHS</span>
-                        <input type="number" step="0.01" name="amount" class="form-control form-control-lg fw-bold" value="{{ sale.balance_remaining }}" max="{{ sale.balance_remaining }}" required>
+                    <div class="alert alert-info py-2 mb-3">
+                        <i class="ri ri-information-line me-1"></i> Outstanding: <strong>{{ sale.balance_remaining|intcomma }}</strong>. Money lands in your current open drawer ({{ user.username }}).
                     </div>
 
                     <label class="form-label">Method</label>
-                    <div class="row g-2">
-                        <div class="col-4">
-                            <input type="radio" class="btn-check" name="payment_method" id="modal_cash" value="CASH" checked>
-                            <label class="btn btn-outline-primary w-100" for="modal_cash">Cash</label>
+                    <div class="row g-2 mb-3">
+                        <div class="col-3">
+                            <input type="radio" class="btn-check" name="payment_method" id="m_cash" value="CASH" checked onchange="settleToggle()">
+                            <label class="btn btn-outline-dark w-100" for="m_cash">Cash</label>
                         </div>
-                        <div class="col-4">
-                            <input type="radio" class="btn-check" name="payment_method" id="modal_momo" value="MOMO">
-                            <label class="btn btn-outline-success w-100" for="modal_momo">MoMo</label>
+                        <div class="col-3">
+                            <input type="radio" class="btn-check" name="payment_method" id="m_momo" value="MOMO" onchange="settleToggle()">
+                            <label class="btn btn-outline-success w-100" for="m_momo">MoMo</label>
                         </div>
-                        <div class="col-4">
-                            <input type="radio" class="btn-check" name="payment_method" id="modal_card" value="CARD">
-                            <label class="btn btn-outline-info w-100" for="modal_card">Card</label>
+                        <div class="col-3">
+                            <input type="radio" class="btn-check" name="payment_method" id="m_card" value="CARD" onchange="settleToggle()">
+                            <label class="btn btn-outline-info w-100" for="m_card">Card</label>
                         </div>
+                        <div class="col-3">
+                            <input type="radio" class="btn-check" name="payment_method" id="m_split" value="SPLIT" onchange="settleToggle()">
+                            <label class="btn btn-outline-warning w-100" for="m_split">Split</label>
+                        </div>
+                    </div>
+
+                    <!-- Single-method amount -->
+                    <div id="settle-single">
+                        <label class="form-label">Amount</label>
+                        <div class="input-group mb-1">
+                            <span class="input-group-text">GHS</span>
+                            <input type="number" step="0.01" min="0" name="amount" class="form-control form-control-lg fw-bold" value="{{ sale.balance_remaining }}">
+                        </div>
+                        <small class="text-muted">Overpayment is returned as cash change.</small>
+                    </div>
+
+                    <!-- Split across methods -->
+                    <div id="settle-split" class="d-none">
+                        <div class="input-group mb-2"><span class="input-group-text fw-bold" style="width:80px;">Cash</span><input type="number" step="0.01" min="0" name="split_cash" class="form-control" placeholder="0.00" oninput="settleSplitSum()"></div>
+                        <div class="input-group mb-2"><span class="input-group-text fw-bold text-success" style="width:80px;">MoMo</span><input type="number" step="0.01" min="0" name="split_momo" class="form-control" placeholder="0.00" oninput="settleSplitSum()"></div>
+                        <div class="input-group mb-2"><span class="input-group-text fw-bold text-info" style="width:80px;">Card</span><input type="number" step="0.01" min="0" name="split_card" class="form-control" placeholder="0.00" oninput="settleSplitSum()"></div>
+                        <div class="d-flex justify-content-between px-1"><span class="text-muted">Total tendered:</span><span class="fw-bold" id="settle-split-total">0.00</span></div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Confirm Payment</button>
+                    <button type="submit" class="btn btn-primary"><i class="ri ri-check-line me-1"></i> Confirm Payment</button>
                 </div>
             </form>
+            <script>
+                function settleToggle() {
+                    const split = document.getElementById('m_split').checked;
+                    document.getElementById('settle-single').classList.toggle('d-none', split);
+                    document.getElementById('settle-split').classList.toggle('d-none', !split);
+                }
+                function settleSplitSum() {
+                    const v = n => parseFloat(document.querySelector(`[name="${n}"]`).value) || 0;
+                    const t = v('split_cash') + v('split_momo') + v('split_card');
+                    document.getElementById('settle-split-total').innerText = t.toLocaleString(undefined, {minimumFractionDigits: 2});
+                }
+            </script>
         </div>
     </div>
 </div>
@@ -260,7 +327,7 @@
             <div class="modal-footer bg-light justify-content-between">
                 <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Close</button>
                 <button type="button" class="btn btn-primary px-4" onclick="window.print()">
-                    <i class="ri-printer-fill me-2"></i> Print
+                    <i class="ri ri-printer-fill me-2"></i> Print
                 </button>
             </div>
         </div>

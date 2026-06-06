@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Arrears / Debtors | Cortex POS{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
+    <div>
+        <h4 class="fw-bold mb-0">Arrears &amp; Debtors</h4>
+        <p class="text-muted mb-0">Customers with outstanding balances on credit sales</p>
+    </div>
+    <div class="d-flex align-items-center gap-2 mt-3 mt-md-0">
+        <form method="get" class="d-flex align-items-center gap-2">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="ri ri-search-line"></i></span>
+                <input type="text" class="form-control" name="q" value="{{ query }}" placeholder="Customer, phone or invoice…">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">Search</button>
+        </form>
+        <a href="{% url 'sales:arrears_log' %}" class="btn btn-outline-secondary btn-sm text-nowrap"><i class="ri ri-file-list-3-line me-1"></i> Payment Log</a>
+    </div>
+</div>
+
+<!-- Summary -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card border-start border-danger border-4 h-100">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="fw-semibold text-danger d-block mb-1">Total Outstanding</span>
+                    <h3 class="mb-0">{{ grand_total|floatformat:2|intcomma }}</h3>
+                </div>
+                <div class="avatar bg-label-danger rounded p-2"><i class="ri ri-hand-coin-line" style="font-size:1.5rem;"></i></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-start border-primary border-4 h-100">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="fw-semibold text-primary d-block mb-1">Debtors</span>
+                    <h3 class="mb-0">{{ debtor_count }}</h3>
+                </div>
+                <div class="avatar bg-label-primary rounded p-2"><i class="ri ri-group-line" style="font-size:1.5rem;"></i></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Debtors -->
+{% if debtors %}
+<div class="accordion" id="arrearsAccordion">
+    {% for d in debtors %}
+    <div class="accordion-item mb-2 border rounded">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#debtor-{{ forloop.counter }}">
+                <div class="d-flex justify-content-between align-items-center w-100 me-3 flex-wrap gap-2">
+                    <div>
+                        <span class="fw-bold">{% if d.customer %}{{ d.customer.get_display_name }}{% else %}Walk-in / Unassigned{% endif %}</span>
+                        {% if d.customer %}<small class="text-muted ms-2">{{ d.customer.phone_number }}</small>{% endif %}
+                    </div>
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="badge bg-label-secondary">{{ d.count }} invoice{{ d.count|pluralize }}</span>
+                        {% if d.oldest_days <= 7 %}
+                            <span class="badge bg-label-success">{{ d.oldest_days }}d old</span>
+                        {% elif d.oldest_days <= 30 %}
+                            <span class="badge bg-label-warning">{{ d.oldest_days }}d old</span>
+                        {% else %}
+                            <span class="badge bg-label-danger">{{ d.oldest_days }}d old</span>
+                        {% endif %}
+                        <span class="fw-bold text-danger fs-6">{{ d.total|floatformat:2|intcomma }}</span>
+                    </div>
+                </div>
+            </button>
+        </h2>
+        <div id="debtor-{{ forloop.counter }}" class="accordion-collapse collapse" data-bs-parent="#arrearsAccordion">
+            <div class="accordion-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr><th>Invoice</th><th>Date</th><th>Location</th><th class="text-end">Total</th><th class="text-end">Paid</th><th class="text-end">Balance</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for s in d.sales %}
+                        <tr style="cursor: pointer;" onclick="window.location.href='{% url 'sales:detail' s.pk %}'" title="Open full sale details">
+                            <td class="fw-semibold">#{{ s.invoice_number|slice:":12" }}</td>
+                            <td>{{ s.created_at|date:"d M Y" }}</td>
+                            <td>{{ s.location.name }}</td>
+                            <td class="text-end">{{ s.total_amount|floatformat:2|intcomma }}</td>
+                            <td class="text-end text-success">{{ s.amount_paid|floatformat:2|intcomma }}</td>
+                            <td class="text-end fw-bold text-danger">{{ s.balance|floatformat:2|intcomma }}</td>
+                            <td class="text-end">
+                                <a href="{% url 'sales:detail' s.pk %}" class="btn btn-sm btn-outline-primary">
+                                    <i class="ri ri-eye-line me-1"></i> View / Settle
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card"><div class="card-body text-center py-5 text-muted">
+    <i class="ri ri-checkbox-circle-line text-success" style="font-size:3rem;"></i>
+    <h5 class="mt-3">No outstanding debts</h5>
+    <p>{% if query %}No debtors match “{{ query }}”.{% else %}Every sale is fully settled.{% endif %}</p>
+</div></div>
+{% endif %}
+{% endblock %}

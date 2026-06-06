@@ -19,16 +19,22 @@
                 </div>
 
                 <div class="row g-3 mb-4">
-                    <div class="col-6">
+                    <div class="col-4">
                         <div class="p-3 border rounded bg-lightest">
                             <small class="text-muted d-block text-uppercase">Opening Float</small>
                             <h5 class="mb-0">{{ session.opening_balance|intcomma }}</h5>
                         </div>
                     </div>
-                    <div class="col-6">
+                    <div class="col-4">
                         <div class="p-3 border rounded bg-lightest">
                             <small class="text-muted d-block text-uppercase">Cash Sales</small>
-                            <h5 class="mb-0 text-success">+ {{ session.total_cash_sales|intcomma }}</h5>
+                            <h5 class="mb-0 text-success">+ {{ cash_sales|intcomma }}</h5>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="p-3 border rounded bg-lightest">
+                            <small class="text-muted d-block text-uppercase">Till Expenses</small>
+                            <h5 class="mb-0 text-danger">- {{ till_expenses|intcomma }}</h5>
                         </div>
                     </div>
                     <div class="col-12">
@@ -36,6 +42,9 @@
                             <span class="fw-bold">Expected Cash in Drawer:</span>
                             <h4 class="mb-0 text-primary">{{ expected_cash|intcomma }}</h4>
                         </div>
+                        <small class="text-muted d-block mt-1">
+                            Opening Float + Cash Sales − approved cash expenses paid from this drawer.
+                        </small>
                     </div>
                 </div>
 

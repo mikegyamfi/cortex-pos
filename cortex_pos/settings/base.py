@@ -44,6 +44,8 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise must come immediately after SecurityMiddleware
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -116,7 +118,8 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 # # Login/Logout Redirects
 LOGIN_URL = 'users:login'
-LOGIN_REDIRECT_URL = 'core:dashboard'
+# 'dashboard:index' is the role-aware router; 'core' is not URL-mounted.
+LOGIN_REDIRECT_URL = 'dashboard:index'
 LOGOUT_REDIRECT_URL = 'users:login'
 
 
