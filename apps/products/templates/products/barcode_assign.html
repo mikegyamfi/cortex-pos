@@ -1,0 +1,388 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Scan Barcodes | Cortex POS{% endblock %}
+
+{% block extra_css %}
+<style>
+    .scan-stage {
+        background: linear-gradient(135deg, #696cff 0%, #5f61e6 100%);
+        color: #fff; border-radius: .5rem; padding: 1.75rem;
+    }
+    .scan-stage .shop-tag {
+        display: inline-flex; align-items: center; gap: 5px; font-size: .72rem; font-weight: 600;
+        background: rgba(255,255,255,.18); padding: 4px 10px; border-radius: 20px; letter-spacing: .3px;
+    }
+    .scan-target-name { font-size: 1.65rem; font-weight: 600; line-height: 1.25; margin: .65rem 0 .25rem; }
+    .scan-target-meta { opacity: .82; font-size: .9rem; }
+    .scan-box {
+        display: flex; align-items: center; gap: 12px; background: #fff; border-radius: .45rem;
+        padding: 0 16px; margin-top: 1.25rem; border: 3px solid transparent; transition: border-color .15s;
+    }
+    .scan-box > i { color: #696cff; font-size: 1.45rem; flex-shrink: 0; }
+    .scan-box input {
+        border: 0; outline: 0; background: transparent; height: 58px; flex: 1; min-width: 0;
+        font-size: 1.2rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 1px;
+    }
+    .scan-box.is-ok    { border-color: #71dd37; }
+    .scan-box.is-error { border-color: #ff3e1d; }
+    .scan-hint { min-height: 22px; font-size: .85rem; margin-top: .6rem; font-weight: 500; }
+    .progress-thin { height: 8px; background: rgba(255,255,255,.25); border-radius: 20px; overflow: hidden; }
+    .progress-thin > div { height: 100%; background: #71dd37; transition: width .25s; }
+
+    .queue-row { cursor: pointer; }
+    .queue-row.is-current { background: rgba(105,108,255,.09) !important; }
+    .queue-row td { vertical-align: middle; }
+    .code-cell { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+    .queue-scroll { max-height: 460px; overflow-y: auto; }
+    kbd { background: #2b2c40; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: .75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+        <h5 class="mb-1">Scan Barcodes</h5>
+        <small class="text-muted">Pick up an item, scan it, and the page moves to the next one.</small>
+    </div>
+    <div class="d-flex gap-2">
+        {% if is_owner and locations %}
+        <form method="get" class="d-flex">
+            <select name="location" class="form-select" onchange="this.form.submit()">
+                {% for loc in locations %}
+                <option value="{{ loc.id }}" {% if selected_location and selected_location.id == loc.id %}selected{% endif %}>{{ loc.name }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        {% endif %}
+        <a href="{% url 'products:product_list' %}" class="btn btn-outline-secondary">
+            <i class="ri ri-arrow-left-line me-1"></i> Catalog
+        </a>
+    </div>
+</div>
+
+{% if total == 0 %}
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="ri ri-barcode-line mb-3" style="font-size:3rem;color:#a1acb8;"></i>
+        <h6>No active products in {{ shop_name }}</h6>
+        <p class="text-muted mb-3">Seed or add products to this shop first, then come back to scan them.</p>
+        <a href="{% url 'products:product_create' %}" class="btn btn-primary">Add a product</a>
+    </div>
+</div>
+{% else %}
+<div class="row g-4">
+    <!-- Scan stage -->
+    <div class="col-lg-5">
+        <div class="scan-stage mb-4">
+            <div class="d-flex justify-content-between align-items-start">
+                <span class="shop-tag"><i class="ri ri-store-2-line"></i> {{ shop_name }}</span>
+                <span class="shop-tag"><i class="ri ri-barcode-line"></i> Scan ready</span>
+            </div>
+
+            <div id="stage-body">
+                <div class="scan-target-name" id="target-name">—</div>
+                <div class="scan-target-meta">
+                    SKU <span id="target-sku" class="fw-semibold">—</span>
+                    · <span id="target-category">—</span>
+                    · <span id="target-price">—</span>
+                </div>
+            </div>
+
+            <div class="scan-box" id="scan-box">
+                <i class="ri ri-barcode-line"></i>
+                <input type="text" id="scan-input" placeholder="Scan or type the barcode…"
+                       autocomplete="off" autocapitalize="off" spellcheck="false" autofocus>
+            </div>
+            <div class="scan-hint" id="scan-hint">Scan the item shown above.</div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+                <small><span id="done-count">{{ done }}</span> of {{ total }} tagged</small>
+                <small id="remaining-label"></small>
+            </div>
+            <div class="progress-thin"><div id="progress-bar" style="width:0%"></div></div>
+
+            <div class="d-flex gap-2 mt-3">
+                <button type="button" class="btn btn-sm btn-light" onclick="skip(1)">
+                    Skip <i class="ri ri-arrow-right-line ms-1"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-light" onclick="skip(-1)">
+                    <i class="ri ri-arrow-left-line me-1"></i> Back
+                </button>
+                <button type="button" class="btn btn-sm btn-light ms-auto" onclick="jumpToNextMissing()">
+                    Next untagged <i class="ri ri-skip-forward-line ms-1"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body py-3">
+                <h6 class="mb-2"><i class="ri ri-information-line me-1"></i> How it works</h6>
+                <ul class="mb-0 ps-3 small text-muted">
+                    <li>The scanner types the code and presses <kbd>Enter</kbd> — that saves it and jumps to the next untagged product.</li>
+                    <li>Typing anywhere on the page lands in the scan box, so you never need the mouse.</li>
+                    <li>Click any row on the right to jump straight to that product.</li>
+                    <li>A code already used in this shop is rejected and tells you which product has it.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Queue -->
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h6 class="mb-0">Catalogue</h6>
+                <div class="d-flex gap-2 align-items-center">
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" id="filter-missing" checked>
+                        <label class="form-check-label small" for="filter-missing">Untagged only</label>
+                    </div>
+                    <input type="text" class="form-control form-control-sm" id="queue-filter"
+                           placeholder="Filter by name or SKU…" style="width:190px;" autocomplete="off">
+                </div>
+            </div>
+            <div class="queue-scroll">
+                <table class="table table-hover mb-0">
+                    <thead class="sticky-top bg-white">
+                        <tr>
+                            <th>Product</th>
+                            <th>SKU</th>
+                            <th>Barcode</th>
+                            <th class="text-end">Clear</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queue-body"></tbody>
+                </table>
+            </div>
+            <div class="card-footer text-muted small" id="queue-empty" hidden>
+                Nothing matches that filter.
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{{ rows|json_script:"rows-data" }}
+<script>
+    const SAVE_URL = "{% url 'products:barcode_assign_save' %}";
+    const CSRF = '{{ csrf_token }}';
+    const TOTAL = {{ total }};
+    const rows = JSON.parse(document.getElementById('rows-data').textContent);
+    let current = 0;
+    let busy = false;
+
+    const $ = (id) => document.getElementById(id);
+
+    function esc(s) {
+        return String(s).replace(/[&<>"']/g, c => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+        ));
+    }
+
+    // --- stage -----------------------------------------------------------
+
+    function renderStage() {
+        const r = rows[current];
+        if (!r) return;
+        $('target-name').textContent = r.name;
+        $('target-sku').textContent = r.sku;
+        $('target-category').textContent = r.category || 'Uncategorised';
+        $('target-price').textContent = r.price;
+        $('scan-input').value = r.barcode || '';
+        $('scan-input').select();
+
+        renderProgress();
+        hint(r.barcode
+            ? 'Already tagged — scan again to replace it.'
+            : 'Scan the item shown above.', null);
+    }
+
+    function renderProgress() {
+        const done = rows.filter(x => x.barcode).length;
+        $('done-count').textContent = done;
+        $('progress-bar').style.width = TOTAL ? (done / TOTAL * 100) + '%' : '0%';
+        const left = TOTAL - done;
+        $('remaining-label').textContent = left ? left + ' left' : 'All tagged 🎉';
+    }
+
+    function hint(text, state) {
+        $('scan-hint').textContent = text;
+        const box = $('scan-box');
+        box.classList.remove('is-ok', 'is-error');
+        if (state) box.classList.add(state === 'ok' ? 'is-ok' : 'is-error');
+    }
+
+    function focusScan() { $('scan-input').focus(); }
+
+    // --- navigation ------------------------------------------------------
+
+    function goTo(index) {
+        if (index < 0 || index >= rows.length) return;
+        current = index;
+        renderStage();
+        renderQueue();
+        focusScan();
+    }
+
+    function skip(step) { goTo(Math.min(rows.length - 1, Math.max(0, current + step))); }
+
+    function jumpToNextMissing(from) {
+        const start = from === undefined ? current + 1 : from;
+        for (let i = start; i < rows.length; i++) {
+            if (!rows[i].barcode) return goTo(i);
+        }
+        for (let i = 0; i < start && i < rows.length; i++) {
+            if (!rows[i].barcode) return goTo(i);
+        }
+        renderStage();
+        renderQueue();
+        hint('Every product in this shop has a barcode. Nice.', 'ok');
+        focusScan();
+    }
+
+    // --- saving ----------------------------------------------------------
+
+    async function save(productId, barcode, opts = {}) {
+        if (busy) return false;
+        busy = true;
+        try {
+            const res = await fetch(SAVE_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                body: JSON.stringify({ product_id: productId, barcode: barcode }),
+            });
+            const data = await res.json();
+            if (!data.ok) {
+                hint(data.error || 'Could not save that code.', 'error');
+                if (data.clash_id) {
+                    const idx = rows.findIndex(r => r.id === data.clash_id);
+                    if (idx > -1) flashRow(data.clash_id);
+                }
+                $('scan-input').select();
+                return false;
+            }
+            const row = rows.find(r => r.id === data.product_id);
+            if (row) row.barcode = data.barcode;
+            renderQueue();
+            if (!opts.silent) {
+                hint(barcode ? 'Saved ✓' : 'Barcode cleared.', 'ok');
+            }
+            return true;
+        } catch (err) {
+            hint('Network problem — that scan was not saved. Try again.', 'error');
+            return false;
+        } finally {
+            busy = false;
+        }
+    }
+
+    async function submitScan() {
+        const value = $('scan-input').value.trim();
+        const r = rows[current];
+        if (!r) return;
+        if (!value) { hint('Nothing scanned yet.', 'error'); return; }
+        if (value === r.barcode) { jumpToNextMissing(); return; }
+
+        const ok = await save(r.id, value);
+        if (ok) {
+            renderProgress();
+            // Hold the green "Saved" state briefly so the operator sees it
+            // land before the next product replaces it.
+            setTimeout(() => jumpToNextMissing(), 500);
+        }
+    }
+
+    async function clearBarcode(productId, event) {
+        event.stopPropagation();
+        const row = rows.find(r => r.id === productId);
+        if (!row || !row.barcode) return;
+        const ok = await save(productId, '', { silent: true });
+        if (ok) {
+            renderStage();
+            hint(`Cleared the barcode on ${row.name}.`, 'ok');
+            focusScan();
+        }
+    }
+
+    // --- queue -----------------------------------------------------------
+
+    function visibleRows() {
+        const term = $('queue-filter').value.trim().toLowerCase();
+        const missingOnly = $('filter-missing').checked;
+        return rows.filter((r, i) => {
+            if (i === current) return true;             // always show what you're on
+            if (missingOnly && r.barcode) return false;
+            if (!term) return true;
+            return r.name.toLowerCase().includes(term) || r.sku.toLowerCase().includes(term);
+        });
+    }
+
+    function renderQueue() {
+        const list = visibleRows();
+        const body = $('queue-body');
+        body.innerHTML = list.map(r => {
+            const i = rows.indexOf(r);
+            const code = r.barcode
+                ? `<span class="badge bg-label-success code-cell">${esc(r.barcode)}</span>`
+                : `<span class="text-muted small">—</span>`;
+            const clear = r.barcode
+                ? `<button type="button" class="btn btn-icon btn-sm btn-text-danger"
+                        title="Clear this barcode" onclick="clearBarcode(${r.id}, event)">
+                        <i class="ri ri-close-circle-line"></i></button>`
+                : '';
+            return `<tr class="queue-row ${i === current ? 'is-current' : ''}"
+                        data-id="${r.id}" onclick="goTo(${i})">
+                        <td>${esc(r.name)}</td>
+                        <td class="code-cell text-muted">${esc(r.sku)}</td>
+                        <td>${code}</td>
+                        <td class="text-end">${clear}</td>
+                    </tr>`;
+        }).join('');
+        $('queue-empty').hidden = list.length > 0;
+
+        const cur = body.querySelector('.is-current');
+        if (cur) cur.scrollIntoView({ block: 'nearest' });
+    }
+
+    function flashRow(productId) {
+        const el = document.querySelector(`.queue-row[data-id="${productId}"]`);
+        if (!el) return;
+        el.scrollIntoView({ block: 'nearest' });
+        el.classList.add('table-danger');
+        setTimeout(() => el.classList.remove('table-danger'), 1600);
+    }
+
+    // --- wiring ----------------------------------------------------------
+
+    document.addEventListener('DOMContentLoaded', function () {
+        if (!TOTAL) return;
+
+        $('scan-input').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); submitScan(); }
+        });
+        $('queue-filter').addEventListener('input', renderQueue);
+        $('queue-filter').addEventListener('keydown', function (e) {
+            // Enter in the filter hands control back to the scanner.
+            if (e.key === 'Enter') { e.preventDefault(); focusScan(); }
+        });
+        $('filter-missing').addEventListener('change', function () {
+            renderQueue();
+            focusScan();
+        });
+
+        // Keep the scanner pointed at the scan box: typing anywhere outside a
+        // field puts the characters where they belong.
+        document.addEventListener('keydown', function (e) {
+            const tag = (e.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            if (e.key.length === 1 || e.key === 'Enter') focusScan();
+        });
+
+        jumpToNextMissing(0);
+    });
+</script>
+{% endblock %}

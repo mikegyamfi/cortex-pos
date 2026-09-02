@@ -1,14 +1,16 @@
 """
-Seed the product catalogue from a CSV or plain-text file.
+Seed the product catalogue from a CSV, JSON or plain-text file.
 
-Every product is created with ZERO stock (no StockBatch) and ZERO prices
-(cost / selling / wholesale all 0.00) — ready for staff to price and receive
-stock afterwards. The command is idempotent (safe to re-run; existing products
-are skipped), so it can be used both locally and in production.
+Every product is created with ZERO stock (no StockBatch). Prices come from the
+file when it carries price columns and default to 0.00 otherwise — either way
+staff can re-price and receive stock afterwards. The command is idempotent
+(safe to re-run; existing products are skipped), so it can be used both locally
+and in production.
 
 Usage
 -----
-    # CSV with a header row (recognised columns: name, sku, barcode, category, unit)
+    # CSV with a header row (recognised columns: name, sku, barcode, category,
+    # unit, location, cost_price, selling_price, wholesale_price, tax_rate)
     python manage.py seed_products --file products.csv
 
     # Plain text — one product name per line
@@ -16,6 +18,13 @@ Usage
 
     # Put everything under a category (created if missing)
     python manage.py seed_products --file products.csv --category "General"
+
+    # Ship the K2 / Foxline catalogue into a shop
+    python manage.py seed_products --file apps/products/seed_data/products.json \
+        --location "K2 Ghana"
+
+    # Ignore any prices in the file and create everything at 0.00
+    python manage.py seed_products --file products.json --zero-prices
 
     # Preview without writing anything
     python manage.py seed_products --file products.csv --dry-run
@@ -26,6 +35,7 @@ and de-duplicated so they stay unique.
 import csv
 import os
 import re
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
@@ -38,16 +48,35 @@ from apps.products.models import Product, Category, Unit
 # Column aliases -> canonical field name (matched case-insensitively).
 COLUMN_ALIASES = {
     'name': 'name', 'product': 'name', 'product name': 'name', 'description': 'name',
-    'sku': 'sku', 'code': 'sku', 'item code': 'sku',
+    'item description': 'name',
+    'sku': 'sku', 'code': 'sku', 'item code': 'sku', 'item number': 'sku',
     'barcode': 'barcode', 'ean': 'barcode', 'upc': 'barcode',
     'category': 'category', 'group': 'category',
-    'unit': 'unit', 'uom': 'unit',
+    'unit': 'unit', 'uom': 'unit', 'um': 'unit',
     'location': 'location', 'shop': 'location', 'store': 'location',
+    'cost_price': 'cost_price', 'cost': 'cost_price', 'cost price': 'cost_price',
+    'unit price': 'cost_price', 'buy price': 'cost_price', 'purchase price': 'cost_price',
+    'selling_price': 'selling_price', 'price': 'selling_price', 'sell price': 'selling_price',
+    'selling price': 'selling_price', 'retail': 'selling_price', 'retail price': 'selling_price',
+    'list price': 'selling_price',
+    'wholesale_price': 'wholesale_price', 'wholesale': 'wholesale_price',
+    'wholesale price': 'wholesale_price', 'bulk price': 'wholesale_price',
+    'tax_rate': 'tax_rate', 'tax': 'tax_rate', 'tax rate': 'tax_rate', 'vat': 'tax_rate',
 }
+
+PRICE_FIELDS = ('cost_price', 'selling_price', 'wholesale_price', 'tax_rate')
+
+# Sensible short symbols for the unit names we seed with.
+UNIT_SYMBOLS = {
+    'piece': 'pcs', 'pieces': 'pcs', 'each': 'ea', 'box': 'box', 'carton': 'ctn',
+    'bottle': 'btl', 'pack': 'pack', 'kilogram': 'kg', 'litre': 'L', 'liter': 'L',
+}
+
+ZERO = Decimal('0.00')
 
 
 class Command(BaseCommand):
-    help = "Seed products from a CSV/TXT file with zero stock and zero prices."
+    help = "Seed products from a CSV/JSON/TXT file with zero stock (prices optional)."
 
     def add_arguments(self, parser):
         parser.add_argument('--file', required=True, help="Path to a .csv/.txt/.json file of products.")
@@ -55,6 +84,8 @@ class Command(BaseCommand):
                             help="Optional category name to assign to every seeded product (created if missing).")
         parser.add_argument('--location', '--shop', dest='location', default=None,
                             help="Bind every seeded product to this shop/location (must already exist).")
+        parser.add_argument('--zero-prices', action='store_true',
+                            help="Ignore any prices in the file and create every product at 0.00.")
         parser.add_argument('--dry-run', action='store_true', help="Show what would happen without writing to the DB.")
 
     def handle(self, *args, **options):
@@ -67,10 +98,12 @@ class Command(BaseCommand):
             raise CommandError("No product rows found in the file.")
 
         dry_run = options['dry_run']
+        zero_prices = options['zero_prices']
         default_category_name = options['category']
         default_location_name = options['location']
 
         created = skipped = 0
+        priced = False  # did any row actually carry a non-zero price?
         # Track SKUs already taken, keyed by (location_id, sku), so we don't
         # collide within the same shop before rows are written. SKUs are unique
         # PER SHOP, so the same SKU is fine in different shops.
@@ -116,9 +149,17 @@ class Command(BaseCommand):
                 if barcode and Product.objects.filter(location=row_location, barcode=barcode).exists():
                     barcode = None  # don't fail the whole run on a dup barcode in this shop
 
+                prices = {f: ZERO for f in PRICE_FIELDS}
+                if not zero_prices:
+                    prices.update({f: self._price(row.get(f)) for f in PRICE_FIELDS})
+                    priced = priced or any(v for v in prices.values())
+
                 if dry_run:
                     where = f" -> {row_location.name}" if row_location else ""
-                    self.stdout.write(f"  + {name}  (sku={sku}){where}")
+                    self.stdout.write(
+                        f"  + {name}  (sku={sku}, cost={prices['cost_price']}, "
+                        f"sell={prices['selling_price']}){where}"
+                    )
                     created += 1
                     continue
 
@@ -129,10 +170,7 @@ class Command(BaseCommand):
                     location=row_location,
                     category=row_category,
                     unit=self._get_unit(row.get('unit'), dry_run),
-                    cost_price=0,
-                    selling_price=0,
-                    wholesale_price=0,
-                    tax_rate=0,
+                    **prices,
                 )
                 created += 1
 
@@ -141,9 +179,10 @@ class Command(BaseCommand):
                 transaction.set_rollback(True)
 
         verb = "Would create" if dry_run else "Created"
+        pricing = "prices taken from the file" if priced else "0 prices"
         self.stdout.write(self.style.SUCCESS(
             f"{verb} {created} product(s); skipped {skipped} existing. "
-            f"All seeded with 0 stock and 0 prices."
+            f"All seeded with 0 stock and {pricing}."
         ))
 
     # --- helpers ---------------------------------------------------------
@@ -171,9 +210,13 @@ class Command(BaseCommand):
         is_csv = lower.endswith('.csv')
         with open(path, newline='', encoding='utf-8-sig', errors='replace') as fh:
             if is_csv:
-                sample = fh.read(2048)
+                # A first row is a header when at least one of its cells is a
+                # column we recognise ("SKU", "Item Description", "Price", ...).
+                first = next(csv.reader(fh), [])
                 fh.seek(0)
-                has_header = bool(re.search(r'name|product|sku', sample, re.IGNORECASE))
+                has_header = any(
+                    (c or '').strip().lower() in COLUMN_ALIASES for c in first
+                )
                 if has_header:
                     reader = csv.DictReader(fh)
                     rows = []
@@ -227,4 +270,37 @@ class Command(BaseCommand):
         unit = Unit.objects.filter(name__iexact=name).first()
         if unit:
             return unit
-        return Unit.objects.create(name=name, symbol=name[:10])
+        symbol = UNIT_SYMBOLS.get(name.lower(), name[:10])
+        return Unit.objects.create(name=name, symbol=symbol)
+
+    def _price(self, value):
+        """
+        Parse a money/percentage cell into a 2dp Decimal, tolerating the
+        European format used on supplier invoices ("1,3500", "1.234,56") as
+        well as the plain "1234.56". Blank/garbage/negative -> 0.00.
+        """
+        if value is None or isinstance(value, bool):
+            return ZERO
+        if isinstance(value, (int, float, Decimal)):
+            raw = Decimal(str(value))
+        else:
+            s = re.sub(r'[^\d,.\-]', '', str(value).strip())
+            if not s or s in {'-', '.', ','}:
+                return ZERO
+            if ',' in s and '.' in s:
+                # Whichever separator comes last is the decimal point.
+                if s.rfind(',') > s.rfind('.'):
+                    s = s.replace('.', '').replace(',', '.')
+                else:
+                    s = s.replace(',', '')
+            elif ',' in s:
+                head, _, tail = s.rpartition(',')
+                # "1,234" reads as a thousands separator; "1,35" as a decimal.
+                s = head + tail if len(tail) == 3 and head else s.replace(',', '.')
+            try:
+                raw = Decimal(s)
+            except InvalidOperation:
+                return ZERO
+        if raw < 0:
+            return ZERO
+        return raw.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)

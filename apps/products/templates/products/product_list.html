@@ -9,9 +9,16 @@
   <div class="card-header border-bottom">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h5 class="mb-0">Product Catalog</h5>
-        <a href="{% url 'products:product_create' %}" class="btn btn-primary">
-            <i class="ri-add-line me-1"></i> Add Product
-        </a>
+        <div class="d-flex gap-2">
+            {% if user.role in 'OWNER,MANAGER' %}
+            <a href="{% url 'products:barcode_assign' %}" class="btn btn-outline-primary">
+                <i class="ri ri-barcode-line me-1"></i> Scan Barcodes
+            </a>
+            {% endif %}
+            <a href="{% url 'products:product_create' %}" class="btn btn-primary">
+                <i class="ri ri-add-line me-1"></i> Add Product
+            </a>
+        </div>
     </div>
 
     <!-- Filter Form -->
