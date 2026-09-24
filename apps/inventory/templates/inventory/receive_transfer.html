@@ -11,7 +11,11 @@
                     <h5 class="mb-0">Confirm Receipt: {{ transfer.reference_number }}</h5>
                     <p class="mb-0 text-muted">Sent from: <strong>{{ transfer.source_location.name }}</strong></p>
                 </div>
-                <span class="badge bg-info">In Transit</span>
+                {% if transfer.status == 'PENDING' %}
+                    <span class="badge bg-warning">Pending — will be pulled from source now</span>
+                {% else %}
+                    <span class="badge bg-info">In Transit</span>
+                {% endif %}
             </div>
 
             <div class="card-body">
@@ -19,9 +23,13 @@
                     {% csrf_token %}
 
                     <div class="alert alert-primary" role="alert">
-                        <i class="ri-truck-line me-2"></i>
+                        <i class="ri ri-truck-line me-2"></i>
                         Please count the physical items arriving at your location.
                         Enter the <strong>Quantity Received</strong> below.
+                        {% if transfer.status == 'PENDING' %}
+                            <br>This request was never dispatched, so confirming here will also
+                            deduct the goods from <strong>{{ transfer.source_location.name }}</strong>.
+                        {% endif %}
                     </div>
 
                     <div class="table-responsive border rounded mb-4">
@@ -42,12 +50,16 @@
                                         <br><small class="text-muted">{{ item.product.sku }}</small>
                                     </td>
                                     <td class="text-muted">{{ item.quantity_requested }}</td>
-                                    <td class="fw-bold">{{ item.quantity_sent }}</td>
+                                    <td class="fw-bold">
+                                        {% if transfer.status == 'PENDING' %}
+                                            <span class="text-muted">Not dispatched</span>
+                                        {% else %}{{ item.quantity_sent }}{% endif %}
+                                    </td>
                                     <td>
                                         <input type="number"
                                                name="received_qty_{{ item.id }}"
                                                class="form-control"
-                                               value="{{ item.quantity_sent }}"
+                                               value="{% if transfer.status == 'PENDING' %}{{ item.quantity_requested }}{% else %}{{ item.quantity_sent }}{% endif %}"
                                                min="0"
                                                required>
                                     </td>
@@ -65,7 +77,7 @@
                     <div class="d-flex justify-content-end gap-2">
                         <a href="{% url 'inventory:transfer_list' %}" class="btn btn-outline-secondary">Cancel</a>
                         <button type="submit" class="btn btn-primary">
-                            <i class="ri-check-double-line me-1"></i> Confirm & Add to Inventory
+                            <i class="ri ri-check-double-line me-1"></i> Confirm & Add to Inventory
                         </button>
                     </div>
                 </form>

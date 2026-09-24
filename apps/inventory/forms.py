@@ -5,6 +5,24 @@ from apps.products.models import Product
 
 
 class StockReceiveForm(forms.ModelForm):
+    """
+    One-step Goods In.
+
+    The person receiving may optionally say WHERE the goods came from
+    (a warehouse / another shop). If they do, the stock is pulled out of that
+    location at the same time. If they leave it blank the goods are simply
+    treated as an external/supplier delivery.
+    """
+
+    source_location = forms.ModelChoiceField(
+        queryset=Location.objects.none(),
+        required=False,
+        label="Receiving from (optional)",
+        help_text="Pick the warehouse/shop you collected the goods from — it will be "
+                  "deducted from there. Leave blank for a supplier or external delivery.",
+        widget=forms.Select(attrs={'class': 'select2'}),
+    )
+
     class Meta:
         model = StockBatch
         # Added 'location' to fields so it can be handled by the form
@@ -20,10 +38,14 @@ class StockReceiveForm(forms.ModelForm):
 
     def __init__(self, user, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.user = user
+        is_owner = user.role == 'OWNER'
+
+        active_locations = Location.objects.filter(is_active=True)
 
         # OWNER LOGIC: Can select any location
-        if user.role == 'OWNER':
-            self.fields['location'].queryset = Location.objects.filter(is_active=True)
+        if is_owner:
+            self.fields['location'].queryset = active_locations
             self.fields['location'].required = True
             self.fields['location'].label = "Receive Into Location"
         else:
@@ -31,6 +53,60 @@ class StockReceiveForm(forms.ModelForm):
             # We remove the field from the visible form, it will be handled in the view
             if 'location' in self.fields:
                 del self.fields['location']
+
+        # Where the goods are coming FROM (optional).
+        source_qs = active_locations
+        if not is_owner and user.assigned_location_id:
+            source_qs = source_qs.exclude(id=user.assigned_location_id)
+        self.fields['source_location'].queryset = source_qs
+
+        # Only offer products that belong to the shop being received into.
+        products = Product.objects.filter(is_active=True)
+        if not is_owner:
+            products = products.filter(location=user.assigned_location)
+        self.fields['product'].queryset = products.select_related('location').order_by('name')
+        if is_owner:
+            self.fields['product'].label_from_instance = (
+                lambda obj: f"{obj.name} ({obj.sku}) — {obj.location.name if obj.location else 'Unassigned'}"
+            )
+        else:
+            self.fields['product'].label_from_instance = lambda obj: f"{obj.name} ({obj.sku})"
+
+        # Keep the form short: everything below is optional.
+        self.fields['quantity'].widget.attrs['min'] = 1
+        self.fields['cost_price'].required = False
+        self.fields['cost_price'].help_text = "Leave blank to use the product's cost price."
+
+    @property
+    def destination(self):
+        """The location being received into, whichever way it was supplied."""
+        if 'location' in self.fields:
+            return self.cleaned_data.get('location')
+        return self.user.assigned_location
+
+    def clean_quantity(self):
+        quantity = self.cleaned_data.get('quantity')
+        if quantity is not None and quantity < 1:
+            raise forms.ValidationError("Enter how many units you are receiving.")
+        return quantity
+
+    def clean(self):
+        cleaned = super().clean()
+        product = cleaned.get('product')
+        source = cleaned.get('source_location')
+        destination = self.destination
+
+        if destination is None:
+            raise forms.ValidationError("You have no shop assigned — ask the owner to assign you to one.")
+
+        if source and source == destination:
+            self.add_error('source_location', "Source and destination cannot be the same location.")
+
+        # Cost price is optional; fall back to the product's own cost.
+        if product and not cleaned.get('cost_price'):
+            cleaned['cost_price'] = product.cost_price
+
+        return cleaned
 
 
 class StockTransferForm(forms.ModelForm):

@@ -11,6 +11,7 @@ from .models import StockBatch, StockTransfer, StockTransferItem, StockAdjustmen
 from .forms import StockReceiveForm, StockTransferForm, StockTransferItemForm, StockAdjustmentForm
 from apps.core.decorators import role_required, INVENTORY_STAFF
 from apps.location.models import Location
+from apps.products.models import Product
 from ..sales.models import SaleItem
 
 
@@ -56,11 +57,47 @@ def inventory_dashboard(request):
     return render(request, 'inventory/dashboard.html', context)
 
 
+def _pull_stock_from(product, source_location, quantity):
+    """
+    Take `quantity` units of `product` out of `source_location` using FEFO.
+
+    Products are shop-scoped, so the source usually holds its own copy of the
+    item — we fall back to matching on SKU/barcode at that location.
+    Returns the number of units actually deducted (may be less than asked for).
+    """
+    batches = StockBatch.objects.filter(location=source_location, quantity__gt=0)
+    matching = batches.filter(product=product)
+
+    if not matching.exists():
+        lookup = Q(sku=product.sku)
+        if product.barcode:
+            lookup |= Q(barcode=product.barcode)
+        twin = Product.objects.filter(location=source_location).filter(lookup).exclude(pk=product.pk).first()
+        if twin:
+            matching = batches.filter(product=twin)
+
+    taken = 0
+    for batch in matching.order_by('expiry_date', 'received_date').select_for_update():
+        if taken >= quantity:
+            break
+        take = min(batch.quantity, quantity - taken)
+        batch.quantity -= take
+        batch.save(update_fields=['quantity', 'updated_at'])
+        taken += take
+    return taken
+
+
 @login_required
 @role_required(*INVENTORY_STAFF)
+@transaction.atomic
 def receive_stock(request):
     """
-    Goods Received Note (GRN) View.
+    Goods Received Note (GRN) View — the single-step receiving flow.
+
+    Pick a product, say how many, and (optionally) where it came from:
+    - Source left blank  -> supplier / external delivery, stock is just added.
+    - Source chosen      -> stock is deducted from that location and a completed
+                            StockTransfer is logged for the audit trail.
     - Owners: Can receive into any location.
     - Staff: Locked to receiving into their assigned location.
     """
@@ -77,8 +114,46 @@ def receive_stock(request):
                 batch.location = user.assigned_location
             # If owner, batch.location is already set from cleaned_data via form
 
+            source = form.cleaned_data.get('source_location')
             batch.save()
-            messages.success(request, f"Received {batch.quantity} x {batch.product.name} into {batch.location.name}")
+
+            if source:
+                pulled = _pull_stock_from(batch.product, source, batch.quantity)
+
+                # Log the movement so it shows up in Transfers & Movement.
+                transfer = StockTransfer.objects.create(
+                    source_location=source,
+                    destination_location=batch.location,
+                    status=StockTransfer.Status.RECEIVED,
+                    requested_by=user,
+                    approved_by=user,
+                    received_by=user,
+                    notes=f"Direct receipt at {batch.location.name} (collected and confirmed in one step).",
+                )
+                StockTransferItem.objects.create(
+                    transfer=transfer,
+                    product=batch.product,
+                    quantity_requested=batch.quantity,
+                    quantity_sent=pulled,
+                    quantity_received=batch.quantity,
+                )
+                if not batch.batch_number:
+                    batch.batch_number = f"TRF-{transfer.reference_number}"
+                    batch.save(update_fields=['batch_number', 'updated_at'])
+
+                if pulled < batch.quantity:
+                    messages.warning(
+                        request,
+                        f"{source.name} only had {pulled} of {batch.quantity} x {batch.product.name} on record — "
+                        f"the remaining {batch.quantity - pulled} were added as new stock. "
+                        f"Check {source.name}'s stock levels."
+                    )
+
+            origin = f" from {source.name}" if source else ""
+            messages.success(
+                request,
+                f"Received {batch.quantity} x {batch.product.name}{origin} into {batch.location.name}."
+            )
             return redirect('inventory:dashboard')
     else:
         form = StockReceiveForm(user)
@@ -342,25 +417,43 @@ def receive_transfer(request, pk):
     1. User counts physical goods.
     2. Enters 'Quantity Received'.
     3. System ADDS stock to Destination.
+
+    A transfer that is still PENDING is dispatched (deducted from the source)
+    on the spot, so one person can collect and confirm in a single step without
+    needing someone at the warehouse to press "Process" first.
     """
     transfer = get_object_or_404(StockTransfer, pk=pk)
     user = request.user
 
-    # Security: Ensure user is at Destination OR is Owner
-    if user.role != 'OWNER' and user.assigned_location != transfer.destination_location:
-        messages.error(request, "You can only receive transfers at your location.")
+    # Security: Ensure user is at either end of the transfer OR is Owner
+    if user.role != 'OWNER' and user.assigned_location not in (transfer.destination_location,
+                                                               transfer.source_location):
+        messages.error(request, "You can only receive transfers involving your location.")
         return redirect('inventory:transfer_list')
 
-    if transfer.status != StockTransfer.Status.IN_TRANSIT:
-        messages.error(request, "This transfer is not currently in transit.")
+    receivable = (StockTransfer.Status.IN_TRANSIT, StockTransfer.Status.PENDING_APPROVAL)
+    if transfer.status not in receivable:
+        messages.error(request, "This transfer is not waiting to be received.")
         return redirect('inventory:transfer_list')
 
     if request.method == 'POST':
+        needs_dispatch = transfer.status == StockTransfer.Status.PENDING_APPROVAL
+
         # Process Reception
         for item in transfer.items.all():
             # Get input qty from form
             received_qty_str = request.POST.get(f'received_qty_{item.id}')
             received_qty = int(received_qty_str) if received_qty_str else 0
+
+            if needs_dispatch:
+                # No one dispatched this from the source yet — do it now (FEFO).
+                item.quantity_sent = _pull_stock_from(item.product, transfer.source_location, received_qty)
+                if item.quantity_sent < received_qty:
+                    messages.warning(
+                        request,
+                        f"{transfer.source_location.name} only had {item.quantity_sent} of "
+                        f"{received_qty} x {item.product.name} on record."
+                    )
 
             item.quantity_received = received_qty
             item.save()
@@ -377,8 +470,14 @@ def receive_transfer(request, pk):
                 received_date=timezone.now()
             )
 
+        notes = request.POST.get('notes', '').strip()
+        if notes:
+            transfer.notes = "\n".join(filter(None, [transfer.notes, notes]))
+
         transfer.status = StockTransfer.Status.RECEIVED
         transfer.received_by = user
+        if needs_dispatch and not transfer.approved_by:
+            transfer.approved_by = user
         transfer.save()
 
         messages.success(request, f"Transfer {transfer.reference_number} received and stock updated.")

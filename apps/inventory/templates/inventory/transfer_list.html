@@ -58,12 +58,13 @@
                                 </a>
                             {% endif %}
 
-                            <!-- 2. RECEIVE (Shop) -->
-                            {% if t.status == 'TRANSIT' and t.destination_location == user.assigned_location or user.role == 'OWNER' and t.status == 'TRANSIT' %}
+                            <!-- 2. RECEIVE (Shop) — also allowed while still pending, so a
+                                 single person can collect and confirm in one go. -->
+                            {% if t.status == 'TRANSIT' or t.status == 'PENDING' %}{% if user.role == 'OWNER' or t.destination_location == user.assigned_location or t.source_location == user.assigned_location %}
                                 <a href="{% url 'inventory:receive_transfer' t.pk %}" class="btn btn-sm btn-success">
                                     Receive
                                 </a>
-                            {% endif %}
+                            {% endif %}{% endif %}
 
                             <!-- 3. VIEW (Always Visible) -->
                             <button type="button"
