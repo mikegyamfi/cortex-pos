@@ -6,6 +6,8 @@ from django.forms import formset_factory
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Q, Sum
+from urllib.parse import urlencode
+from decimal import Decimal
 
 from .models import StockBatch, StockTransfer, StockTransferItem, StockAdjustment
 from .forms import StockReceiveForm, StockTransferForm, StockTransferItemForm, StockAdjustmentForm
@@ -22,9 +24,15 @@ def inventory_dashboard(request):
     Inventory Dashboard.
     - Owners: Can switch view to any location.
     - Staff: Locked to their assigned location.
+
+    Supports searching for a product (name / SKU / barcode / batch number) and
+    switching the table between stock on hand, out-of-stock and low-stock
+    products via ?stock=out / ?stock=low.
     """
     user = request.user
     selected_location_id = request.GET.get('location')
+    query = (request.GET.get('q') or '').strip()
+    stock_view = request.GET.get('stock') or ''
     locations = Location.objects.filter(is_active=True)
 
     # 1. Determine Scope
@@ -41,18 +49,111 @@ def inventory_dashboard(request):
 
     batches = batches.select_related('product', 'location')
 
-    # 2. Expiry Logic (Next 30 Days)
+    # 2. Stock position per product (drives the summary cards and the
+    #    out-of-stock / low-stock listings).
+    products = Product.objects.filter(is_active=True).select_related('location')
+    if location_scope:
+        products = products.filter(location=location_scope)
+
+    on_hand = {
+        row['product_id']: row['total'] or 0
+        for row in batches.values('product_id').annotate(total=Sum('quantity'))
+    }
+
+    out_of_stock, low_stock = [], []
+    for product in products:
+        product.on_hand = on_hand.get(product.id, 0)
+        if product.on_hand <= 0:
+            out_of_stock.append(product)
+        elif product.on_hand <= product.low_stock_threshold:
+            low_stock.append(product)
+
+    # The summary cards always show the whole shop, so the counts don't move
+    # around while someone is searching.
+    in_stock_count, out_of_stock_count, low_stock_count = len(on_hand), len(out_of_stock), len(low_stock)
+    total_value = sum(b.quantity * b.cost_price for b in batches)
+
+    # Expiry warning covers the whole shop too (next 30 days).
     today = timezone.now().date()
     thirty_days = today + timedelta(days=30)
     expiring_soon = [b for b in batches if b.expiry_date and b.expiry_date <= thirty_days]
+
+    # 3. Search — narrows the table only.
+    if query:
+        batches = batches.filter(
+            Q(product__name__icontains=query)
+            | Q(product__sku__icontains=query)
+            | Q(product__barcode__icontains=query)
+            | Q(batch_number__icontains=query)
+        )
+        needle = query.lower()
+
+        def matches(product):
+            return (needle in product.name.lower()
+                    or needle in (product.sku or '').lower()
+                    or needle in (product.barcode or '').lower())
+
+        out_of_stock = [p for p in out_of_stock if matches(p)]
+        low_stock = [p for p in low_stock if matches(p)]
+
+    # The table shows stock on hand by default, or the product list behind
+    # whichever summary card was clicked.
+    product_rows = None
+    if stock_view == 'out':
+        product_rows = out_of_stock
+    elif stock_view == 'low':
+        product_rows = low_stock
+
+    # Stock on hand is grouped PER PRODUCT, not per batch. Every receipt creates
+    # a new StockBatch, so an ungrouped list shows "5" and "20" on separate rows
+    # and looks like the stock never went up, while the POS (which sums batches)
+    # correctly shows 25.
+    stock_rows = []
+    if product_rows is None:
+        grouped = {}
+        for batch in batches:
+            key = (batch.product_id, batch.location_id)
+            row = grouped.get(key)
+            if row is None:
+                row = grouped[key] = {
+                    'product': batch.product,
+                    'location': batch.location,
+                    'quantity': 0,
+                    'value': Decimal('0.00'),
+                    'batches': [],
+                    'expiry_date': None,
+                }
+            row['quantity'] += batch.quantity
+            row['value'] += batch.quantity * batch.cost_price
+            row['batches'].append(batch)
+            if batch.expiry_date and (row['expiry_date'] is None or batch.expiry_date < row['expiry_date']):
+                row['expiry_date'] = batch.expiry_date
+        stock_rows = sorted(grouped.values(), key=lambda r: r['product'].name.lower())
+
+    # Query strings for the summary-card links (keep location + search) and for
+    # the "clear search" link (keep location + which card is active).
+    keep = {}
+    if selected_location_id:
+        keep['location'] = selected_location_id
+    base_query = urlencode(dict(keep, **({'q': query} if query else {})))
+    clear_query = urlencode(dict(keep, **({'stock': stock_view} if stock_view else {})))
 
     context = {
         'location': location_scope,  # If None, template handles "All Locations"
         'locations': locations,  # For the dropdown
         'batches': batches,
         'expiring_soon': expiring_soon,
-        'total_value': sum(b.quantity * b.cost_price for b in batches),
-        'selected_location_id': int(selected_location_id) if selected_location_id else None
+        'total_value': total_value,
+        'selected_location_id': int(selected_location_id) if selected_location_id else None,
+        'query': query,
+        'base_query': base_query,
+        'clear_query': clear_query,
+        'stock_view': stock_view,
+        'product_rows': product_rows,
+        'stock_rows': stock_rows,
+        'in_stock_count': in_stock_count,
+        'out_of_stock_count': out_of_stock_count,
+        'low_stock_count': low_stock_count,
     }
     return render(request, 'inventory/dashboard.html', context)
 

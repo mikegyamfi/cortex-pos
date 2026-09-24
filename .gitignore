@@ -11,3 +11,6 @@ __pycache__/
 *.pyc
 staticfiles/
 .venv/
+
+# Node (only needed to run the JS tests in tests/js)
+node_modules/

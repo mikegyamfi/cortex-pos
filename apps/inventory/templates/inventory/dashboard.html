@@ -6,7 +6,7 @@
 {% block content %}
 <div class="row gy-4">
     <!-- Header & Switcher -->
-    <div class="col-12 d-flex justify-content-between align-items-center">
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             <h4 class="fw-bold mb-0">
                 Inventory:
@@ -16,7 +16,7 @@
                     All Locations
                 {% endif %}
             </h4>
-            <p class="mb-0 text-muted">Total Value: <span class="fw-bold text-primary">{{ total_value|intcomma }}</span></p>
+            <p class="mb-0 text-muted">Total Value: <span class="fw-bold text-primary">{{ total_value|floatformat:2|intcomma }}</span></p>
         </div>
 
         <div class="d-flex gap-2">
@@ -24,7 +24,7 @@
             {% if user.role == 'OWNER' %}
             <div class="btn-group">
                 <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">
-                    <i class="ri-store-2-line me-1"></i> Switch View
+                    <i class="ri ri-store-2-line me-1"></i> Switch View
                 </button>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="{% url 'inventory:dashboard' %}">All Locations</a></li>
@@ -37,19 +37,96 @@
             {% endif %}
 
             <a href="{% url 'inventory:receive_stock' %}" class="btn btn-primary">
-                <i class="ri-download-2-line me-1"></i> Receive
+                <i class="ri ri-download-2-line me-1"></i> Receive
             </a>
             <a href="{% url 'inventory:transfer_list' %}" class="btn btn-outline-primary">
-                <i class="ri-truck-line me-1"></i> Transfers
+                <i class="ri ri-truck-line me-1"></i> Transfers
             </a>
         </div>
+    </div>
+
+    <!-- Stock position summary. Each card filters the table below. -->
+    <div class="col-12">
+        <div class="row g-3">
+            <div class="col-6 col-lg-3">
+                <a href="?{{ base_query }}" class="card h-100 text-body text-decoration-none {% if not stock_view %}border-primary{% endif %}">
+                    <div class="card-body d-flex align-items-center justify-content-between">
+                        <div>
+                            <small class="text-muted d-block">Products In Stock</small>
+                            <h4 class="mb-0 fw-bold">{{ in_stock_count }}</h4>
+                        </div>
+                        <span class="badge bg-label-primary rounded p-2"><i class="ri ri-archive-line ri-22px"></i></span>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6 col-lg-3">
+                <a href="?stock=out{% if base_query %}&amp;{{ base_query }}{% endif %}"
+                   class="card h-100 text-body text-decoration-none {% if stock_view == 'out' %}border-danger{% endif %}">
+                    <div class="card-body d-flex align-items-center justify-content-between">
+                        <div>
+                            <small class="text-muted d-block">Out of Stock</small>
+                            <h4 class="mb-0 fw-bold text-danger">{{ out_of_stock_count }}</h4>
+                        </div>
+                        <span class="badge bg-label-danger rounded p-2"><i class="ri ri-close-circle-line ri-22px"></i></span>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6 col-lg-3">
+                <a href="?stock=low{% if base_query %}&amp;{{ base_query }}{% endif %}"
+                   class="card h-100 text-body text-decoration-none {% if stock_view == 'low' %}border-warning{% endif %}">
+                    <div class="card-body d-flex align-items-center justify-content-between">
+                        <div>
+                            <small class="text-muted d-block">Running Low</small>
+                            <h4 class="mb-0 fw-bold text-warning">{{ low_stock_count }}</h4>
+                        </div>
+                        <span class="badge bg-label-warning rounded p-2"><i class="ri ri-alert-line ri-22px"></i></span>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body d-flex align-items-center justify-content-between">
+                        <div>
+                            <small class="text-muted d-block">Stock Value</small>
+                            <h4 class="mb-0 fw-bold text-success">{{ total_value|floatformat:2|intcomma }}</h4>
+                        </div>
+                        <span class="badge bg-label-success rounded p-2"><i class="ri ri-money-dollar-circle-line ri-22px"></i></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Product search -->
+    <div class="col-12">
+        <form method="get" class="row g-2 align-items-center">
+            {% if selected_location_id %}<input type="hidden" name="location" value="{{ selected_location_id }}">{% endif %}
+            {% if stock_view %}<input type="hidden" name="stock" value="{{ stock_view }}">{% endif %}
+            <div class="col-12 col-md-6 col-lg-5">
+                <div class="input-group input-group-merge">
+                    <span class="input-group-text"><i class="ri ri-search-line"></i></span>
+                    <input type="text" name="q" class="form-control" value="{{ query }}"
+                           placeholder="Search a product by name, SKU or barcode..." autofocus>
+                </div>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary"><i class="ri ri-search-line me-1"></i> Search</button>
+            </div>
+            {% if query %}
+            <div class="col-auto">
+                <a href="?{{ clear_query }}" class="btn btn-outline-secondary">
+                    <i class="ri ri-close-line me-1"></i> Clear
+                </a>
+            </div>
+            {% endif %}
+        </form>
     </div>
 
     <!-- Expiry Alert (Only shows if items expiring in < 30 days) -->
     {% if expiring_soon %}
     <div class="col-12">
         <div class="alert alert-warning d-flex align-items-center" role="alert">
-            <i class="ri-alarm-warning-line me-2"></i>
+            <i class="ri ri-alarm-warning-line me-2"></i>
             <div>
                 <strong>Expiry Alert:</strong> {{ expiring_soon|length }} batches are expiring soon.
                 <a href="{% url 'inventory:expiry_alerts' %}" class="btn btn-sm btn-warning ms-2">View Details</a>
@@ -58,56 +135,159 @@
     </div>
     {% endif %}
 
-    <!-- Stock Batch Table -->
     <div class="col-12">
         <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    {% if stock_view == 'out' %}Out of Stock
+                    {% elif stock_view == 'low' %}Running Low
+                    {% else %}Stock On Hand{% endif %}
+                    {% if query %}<span class="text-muted fw-normal">— matching "{{ query }}"</span>{% endif %}
+                </h6>
+            </div>
+
+            {% if stock_view == 'out' or stock_view == 'low' %}
+            <!-- Product view: what to re-order -->
             <div class="table-responsive text-nowrap">
                 <table class="table table-hover">
                     <thead>
                         <tr>
                             <th>Product</th>
-                            {% if not location %}<th>Location</th>{% endif %}
-                            <th>Batch #</th>
-                            <th>Quantity</th>
-                            <th>Cost</th>
-                            <th>Expiry</th>
-                            <th class="text-center">Actions</th>
+                            {% if not location %}<th>Shop</th>{% endif %}
+                            <th>On Hand</th>
+                            <th>Alert Level</th>
+                            <th class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for batch in batches %}
+                        {% for product in product_rows %}
                         <tr>
                             <td>
-                                <strong>{{ batch.product.name }}</strong>
-                                <br><small class="text-muted">{{ batch.product.sku }}</small>
+                                <strong>{{ product.name }}</strong>
+                                <br><small class="text-muted">{{ product.sku }}</small>
                             </td>
                             {% if not location %}
-                            <td><span class="badge bg-label-info">{{ batch.location.name }}</span></td>
+                            <td><span class="badge bg-label-info">{{ product.location.name|default:"Unassigned" }}</span></td>
                             {% endif %}
-                            <td>{{ batch.batch_number|default:"-" }}</td>
                             <td>
-                                <span class="badge bg-label-primary">{{ batch.quantity }}</span>
+                                <span class="badge {% if product.on_hand %}bg-label-warning{% else %}bg-label-danger{% endif %}">
+                                    {{ product.on_hand }}
+                                </span>
                             </td>
-                            <td>{{ batch.cost_price|intcomma }}</td>
-                            <td>{{ batch.expiry_date|date:"d M Y" }}</td>
+                            <td class="text-muted">{{ product.low_stock_threshold }}</td>
                             <td class="text-center">
-                                <button type="button"
-                                        class="btn btn-sm btn-outline-info batch-quickview-btn"
-                                        data-batch-id="{{ batch.pk }}"
-                                        data-batch-label="{{ batch.product.name }} — {{ batch.batch_number|default:'No Batch' }}"
-                                        title="Quick view">
-                                    <i class="ri-eye-line"></i> View
-                                </button>
+                                <a href="{% url 'inventory:receive_stock' %}" class="btn btn-sm btn-primary">
+                                    <i class="ri ri-download-2-line me-1"></i> Receive
+                                </a>
                             </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="{% if not location %}7{% else %}6{% endif %}" class="text-center py-5">No stock found.</td>
+                            <td colspan="{% if not location %}5{% else %}4{% endif %}" class="text-center py-5 text-muted">
+                                {% if stock_view == 'out' %}Nothing is out of stock{% else %}No products are running low{% endif %}{% if query %} matching "{{ query }}"{% endif %}.
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+            {% else %}
+            <!-- Stock on hand, one row per product (totalled across every batch).
+                 Expand a row to see the individual batches behind the total. -->
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            {% if not location %}<th>Location</th>{% endif %}
+                            <th>Quantity</th>
+                            <th>Batches</th>
+                            <th>Value</th>
+                            <th>Next Expiry</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in stock_rows %}
+                        <tr>
+                            <td>
+                                <strong>{{ row.product.name }}</strong>
+                                <br><small class="text-muted">{{ row.product.sku }}</small>
+                            </td>
+                            {% if not location %}
+                            <td><span class="badge bg-label-info">{{ row.location.name }}</span></td>
+                            {% endif %}
+                            <td>
+                                <span class="badge {% if row.quantity <= row.product.low_stock_threshold %}bg-label-warning{% else %}bg-label-primary{% endif %} fs-6">
+                                    {{ row.quantity }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if row.batches|length > 1 %}
+                                    <button class="btn btn-sm btn-text-secondary p-0" type="button"
+                                            data-bs-toggle="collapse" data-bs-target="#batches-{{ row.product.id }}-{{ row.location.id }}">
+                                        {{ row.batches|length }} batches <i class="ri ri-arrow-down-s-line"></i>
+                                    </button>
+                                {% else %}
+                                    <span class="text-muted">1</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ row.value|floatformat:2|intcomma }}</td>
+                            <td>{{ row.expiry_date|date:"d M Y"|default:"—" }}</td>
+                            <td class="text-center">
+                                <a href="{% url 'inventory:receive_stock' %}" class="btn btn-sm btn-outline-primary" title="Receive more">
+                                    <i class="ri ri-download-2-line"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        <!-- Batch breakdown for this product -->
+                        <tr class="collapse" id="batches-{{ row.product.id }}-{{ row.location.id }}">
+                            <td colspan="{% if not location %}7{% else %}6{% endif %}" class="bg-lighter p-0">
+                                <table class="table table-sm mb-0" data-no-search>
+                                    <thead>
+                                        <tr>
+                                            <th>Batch #</th>
+                                            <th>Quantity</th>
+                                            <th>Cost</th>
+                                            <th>Received</th>
+                                            <th>Expiry</th>
+                                            <th class="text-center">Audit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for batch in row.batches %}
+                                        <tr>
+                                            <td>{{ batch.batch_number|default:"-" }}</td>
+                                            <td>{{ batch.quantity }}</td>
+                                            <td>{{ batch.cost_price|intcomma }}</td>
+                                            <td>{{ batch.received_date|date:"d M Y" }}</td>
+                                            <td>{{ batch.expiry_date|date:"d M Y"|default:"—" }}</td>
+                                            <td class="text-center">
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-info batch-quickview-btn"
+                                                        data-batch-id="{{ batch.pk }}"
+                                                        data-batch-label="{{ batch.product.name }} — {{ batch.batch_number|default:'No Batch' }}"
+                                                        title="Quick view">
+                                                    <i class="ri ri-eye-line"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="{% if not location %}7{% else %}6{% endif %}" class="text-center py-5 text-muted">
+                                {% if query %}No stock matching "{{ query }}".{% else %}No stock found.{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -128,7 +308,7 @@
             </div>
             <div class="modal-footer">
                 <a href="#" id="batchQuickviewFullLink" class="btn btn-outline-primary">
-                    <i class="ri-external-link-line me-1"></i> Full Audit Page
+                    <i class="ri ri-external-link-line me-1"></i> Full Audit Page
                 </a>
                 <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Close</button>
             </div>

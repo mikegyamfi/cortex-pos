@@ -42,24 +42,54 @@
             </div>
 
             <div class="col-md-2">
-                <label class="form-label">From Date</label>
-                <input type="date" class="form-control" name="start_date" value="{{ filters.start_date|default:'' }}">
+                <label class="form-label">Date</label>
+                <input type="date" class="form-control" name="date" value="{{ filters.date }}" max="{{ today }}">
             </div>
 
-            <div class="col-md-2">
-                <label class="form-label">To Date</label>
-                <input type="date" class="form-control" name="end_date" value="{{ filters.end_date|default:'' }}">
-            </div>
-
-            <div class="col-md-1 d-flex gap-2">
-                <button type="submit" class="btn btn-primary w-100">
-                    <i class="ri-filter-3-line"></i>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="ri ri-filter-3-line me-1"></i> Filter
                 </button>
-                <a href="{% url 'sales:list' %}" class="btn btn-outline-secondary" title="Reset Filters">
-                    <i class="ri-refresh-line"></i>
+                <a href="{% url 'sales:list' %}" class="btn btn-outline-secondary" title="Back to today">
+                    <i class="ri ri-calendar-check-line me-1"></i> Today
+                </a>
+                <a href="?date=" class="btn btn-outline-secondary" title="Show every date">
+                    All dates
                 </a>
             </div>
         </form>
+
+        <!-- Money for the selected day -->
+        <div class="row g-3 mt-1">
+            <div class="col-6 col-lg-3">
+                <div class="border rounded p-3 h-100">
+                    <small class="text-muted d-block">
+                        {% if filters.date %}Sold on {{ filters.date }}{% else %}Sold (all dates){% endif %}
+                    </small>
+                    <h4 class="mb-0 fw-bold text-primary">{{ summary.billed|floatformat:2|intcomma }}</h4>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="border rounded p-3 h-100">
+                    <small class="text-muted d-block">Money Collected</small>
+                    <h4 class="mb-0 fw-bold text-success">{{ summary.collected|floatformat:2|intcomma }}</h4>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="border rounded p-3 h-100">
+                    <small class="text-muted d-block">Outstanding / Debt</small>
+                    <h4 class="mb-0 fw-bold {% if summary.outstanding %}text-danger{% else %}text-muted{% endif %}">
+                        {{ summary.outstanding|floatformat:2|intcomma }}
+                    </h4>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="border rounded p-3 h-100">
+                    <small class="text-muted d-block">Transactions</small>
+                    <h4 class="mb-0 fw-bold">{{ summary.count }}</h4>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="table-responsive text-nowrap">

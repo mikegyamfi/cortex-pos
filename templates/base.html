@@ -27,6 +27,7 @@
     <!-- Vendors CSS -->
     <link rel="stylesheet" href="{% static 'assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css' %}" />
     <link rel="stylesheet" href="{% static 'assets/vendor/libs/apex-charts/apex-charts.css' %}" />
+    <link rel="stylesheet" href="{% static 'css/searchable-select.css' %}" />
 
     <!-- Helpers -->
     <script src="{% static 'assets/vendor/js/helpers.js' %}"></script>
@@ -101,6 +102,12 @@
 
     <!-- Main JS -->
     <script src="{% static 'assets/js/main.js' %}"></script>
+
+    <!-- Type-to-search on long dropdowns (products, batches, customers...) -->
+    <script src="{% static 'js/searchable-select.js' %}"></script>
+
+    <!-- All-column search box on every list table -->
+    <script src="{% static 'js/table-search.js' %}"></script>
 
     {% block extra_js %}{% endblock %}
   </body>

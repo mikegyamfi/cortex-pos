@@ -418,13 +418,35 @@ def sale_list(request):
         else:
             sales = sales.filter(status=status)
 
-    # 3. Date Range
-    start_date = request.GET.get('start_date')
-    end_date = request.GET.get('end_date')
-    if start_date:
-        sales = sales.filter(created_at__date__gte=start_date)
-    if end_date:
-        sales = sales.filter(created_at__date__lte=end_date)
+    # 3. Single-day filter. Defaults to today, so the page opens on today's
+    #    trading. An explicit empty value (?date=) widens it to all time, and a
+    #    search without a date looks across the whole history.
+    if 'date' in request.GET:
+        date_filter = request.GET['date'].strip()
+    elif query:
+        date_filter = ''
+    else:
+        date_filter = timezone.localdate().isoformat()
+
+    if date_filter:
+        sales = sales.filter(created_at__date=date_filter)
+
+    # 4. Money totals for whatever is on screen.
+    #    total_amount / amount_paid are already net of refunds (a refund reduces
+    #    both), so these read as real money for the period.
+    totals = sales.aggregate(
+        billed=Sum('total_amount'),
+        collected=Sum('amount_paid'),
+    )
+    total_billed = totals['billed'] or Decimal('0.00')
+    total_collected = totals['collected'] or Decimal('0.00')
+
+    summary = {
+        'count': sales.count(),
+        'billed': total_billed,
+        'collected': total_collected,
+        'outstanding': max(total_billed - total_collected, Decimal('0.00')),
+    }
 
     # Context for Owner Location Filter
     locations = []
@@ -433,11 +455,12 @@ def sale_list(request):
 
     return render(request, 'sales/sale_list.html', {
         'sales': sales,
+        'summary': summary,
+        'today': timezone.localdate().isoformat(),
         'filters': {
             'q': query,
             'status': status,
-            'start_date': start_date,
-            'end_date': end_date,
+            'date': date_filter,
             'location': request.GET.get('location')
         },
         'locations': locations

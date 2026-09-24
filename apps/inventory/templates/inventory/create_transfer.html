@@ -61,7 +61,7 @@
                     <h6 class="fw-bold text-muted mb-3"><i class="ri-shopping-cart-line me-1"></i> Items to Transfer</h6>
                     {{ item_formset.management_form }}
                     <div class="table-responsive">
-                        <table class="table table-bordered" id="itemsTable">
+                        <table data-no-search class="table table-bordered" id="itemsTable">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 60%;">Product</th>
@@ -94,7 +94,7 @@
 </div>
 <!-- Include same JS as before for formset -->
 <div id="empty-form" style="display:none;">
-    <table style="display: none">
+    <table data-no-search style="display: none">
         <tr class="item-row">
             <td class="p-2">{{ item_formset.empty_form.product }}</td>
             <td class="p-2">{{ item_formset.empty_form.quantity_requested }}</td>
