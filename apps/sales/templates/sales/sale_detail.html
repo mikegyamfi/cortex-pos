@@ -142,6 +142,12 @@
                             <tr>
                                 <td class="ps-0">
                                     <span class="fw-medium text-heading">{{ item.product.name }}</span>
+                                    {% if item.price_tier != 'RETAIL' %}
+                                        <span class="badge {% if item.price_tier == 'WHOLESALE' %}bg-label-warning{% else %}bg-label-danger{% endif %} ms-1">
+                                            {{ item.get_price_tier_display }}
+                                        </span>
+                                    {% endif %}
+                                    {% if item.is_refunded %}<span class="badge bg-label-secondary ms-1">Refunded</span>{% endif %}
                                 </td>
                                 <td class="text-center">{{ item.quantity }}</td>
                                 <td class="text-end">{{ item.unit_price|intcomma }}</td>

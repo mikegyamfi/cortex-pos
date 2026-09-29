@@ -89,6 +89,7 @@
     .pc-meta { text-align: right; flex-shrink: 0; }
     .pc-price { font-weight: 800; font-size: 1rem; line-height: 1.1; color: #696cff; }
     .pc-price.text-warning { color: #ffab00 !important; }
+    .pc-price.text-danger { color: #ff3e1d !important; }
     .stock-badge { font-size: .6rem; padding: 2px 6px; margin-top: 3px; display: inline-block; }
     .empty-state { grid-column: 1 / -1; text-align: center; color: #a7b0ba; padding: 50px 10px; }
     .empty-state i { font-size: 3rem; display: block; margin-bottom: 10px; }
@@ -101,7 +102,6 @@
 
     .cart-items-wrapper { flex: 1; overflow-y: auto; background: #fbfbfc; padding: 6px; }
     .cart-item { background: #fff; padding: 10px 12px; border: 1px solid #f0f0f2; border-radius: 10px; margin-bottom: 6px; display: flex; gap: 10px; align-items: center; }
-    .cart-item.wholesale { background: #fffaf0; border-color: #ffe3a3; }
     .ci-body { flex: 1; min-width: 0; }
     .ci-name { font-weight: 700; font-size: .84rem; color: #384551; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ci-sub { font-size: .7rem; color: #a7b0ba; }
@@ -113,9 +113,20 @@
     .ci-remove { color: #d9dee3; cursor: pointer; font-size: 1.05rem; transition: .15s; }
     .ci-remove:hover { color: #ff3e1d; }
     .price-tag { font-size: .6rem; padding: 1px 6px; border-radius: 4px; color: #fff; font-weight: 700; text-transform: uppercase; cursor: pointer; margin-left: 4px; }
-    .price-tag.w { background: #ffab00; }
-    .price-tag.r { background: #696cff; opacity: .25; }
-    .price-tag.r:hover { opacity: 1; }
+    .price-tag.RETAIL { background: #696cff; opacity: .3; }
+    .price-tag.RETAIL:hover { opacity: 1; }
+    .price-tag.WHOLESALE { background: #ffab00; }
+    .price-tag.DISTRIBUTOR { background: #ff3e1d; }
+    .cart-item.tier-WHOLESALE { background: #fffaf0; border-color: #ffe3a3; }
+    .cart-item.tier-DISTRIBUTOR { background: #fff5f5; border-color: #ffc9bd; }
+    .tier-switch { display: flex; gap: 4px; margin-bottom: .75rem; }
+    .tier-switch button { flex: 1; border: 1px solid #d9dee3; background: #fff; border-radius: 6px;
+        padding: .35rem .2rem; font-size: .72rem; font-weight: 700; text-transform: uppercase;
+        color: #697a8d; cursor: pointer; }
+    .tier-switch button.active { color: #fff; border-color: transparent; }
+    .tier-switch button.active[data-tier="RETAIL"] { background: #696cff; }
+    .tier-switch button.active[data-tier="WHOLESALE"] { background: #ffab00; }
+    .tier-switch button.active[data-tier="DISTRIBUTOR"] { background: #ff3e1d; }
 
     .cart-footer { padding: 1.1rem 1.25rem; border-top: 1px solid #eef0f2; flex-shrink: 0; box-shadow: 0 -4px 16px rgba(0,0,0,.03); }
     .total-display { background: #2b2c40; color: #fff; padding: 1rem 1.2rem; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -204,9 +215,12 @@
                 {% for product in products %}
                 <div class="product-card{% if product.stock_qty <= 0 %} out-of-stock{% endif %}"
                      data-category="{{ product.category.id }}"
+                     data-product-id="{{ product.id }}"
                      data-price-retail="{{ product.selling_price }}"
-                     data-price-wholesale="{{ product.wholesale_price|default:product.selling_price }}"
-                     onclick="addToCart({{ product.id }}, '{{ product.name|escapejs }}', '{{ product.sku|escapejs }}', {{ product.selling_price }}, {{ product.wholesale_price|default:product.selling_price }}, {{ product.stock_qty }})">
+                     data-price-wholesale="{% if product.wholesale_price is not None %}{{ product.wholesale_price }}{% endif %}"
+                     data-price-distributor="{% if product.distributor_price is not None %}{{ product.distributor_price }}{% endif %}"
+                     data-name="{{ product.name }}" data-sku="{{ product.sku }}" data-stock="{{ product.stock_qty }}"
+                     onclick="addCardToCart(this)">
                     <div class="pc-thumb" data-seed="{{ product.name }}"></div>
                     <div class="pc-body">
                         <div class="pc-name" title="{{ product.name }}">{{ product.name }}</div>
@@ -261,10 +275,15 @@
         </div>
 
         <div class="cart-footer">
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" id="wholesale-mode-check" onchange="toggleGlobalWholesale()">
-                <label class="form-check-label fw-semibold text-dark" for="wholesale-mode-check">Wholesale prices (global)</label>
+            <div class="mb-1">
+                <small class="text-muted fw-semibold text-uppercase" style="font-size:.68rem;">Price list</small>
             </div>
+            <div class="tier-switch" id="tier-switch">
+                <button type="button" data-tier="RETAIL" class="active" onclick="setGlobalTier('RETAIL')">Normal</button>
+                <button type="button" data-tier="WHOLESALE" onclick="setGlobalTier('WHOLESALE')">Wholesale</button>
+                <button type="button" data-tier="DISTRIBUTOR" onclick="setGlobalTier('DISTRIBUTOR')">Distributor</button>
+            </div>
+            <div id="tier-warning" class="alert alert-warning py-1 px-2 mb-2 d-none" style="font-size:.72rem;"></div>
 
             <div class="d-flex justify-content-between mb-2 text-muted"><span>Subtotal</span><span id="cart-subtotal" class="fw-bold text-dark">0.00</span></div>
             <div class="d-flex justify-content-between mb-3 text-muted"><span>Tax</span><span id="cart-tax" class="fw-bold text-dark">0.00</span></div>
@@ -394,7 +413,11 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     // --- GLOBAL STATE ---
-    let isWholesale = false;
+    // Which price list the POS is selling at. The server re-derives every
+    // amount from this, so the cart only ever carries a tier name.
+    const TIERS = ['RETAIL', 'WHOLESALE', 'DISTRIBUTOR'];
+    const TIER_LABELS = { RETAIL: 'Normal', WHOLESALE: 'Wholesale', DISTRIBUTOR: 'Distributor' };
+    let globalTier = 'RETAIL';
     let selectedCustomerId = null;
     let cart = [];
     let cartTotal = 0.00;
@@ -519,8 +542,8 @@
     }
 
     function searchCardHTML(p, i) {
-        const price = isWholesale ? p.wholesale : p.retail;
-        const priceCls = isWholesale ? 'text-warning' : '';
+        const price = tierPrice(p.prices, globalTier);
+        const priceCls = globalTier === 'RETAIL' ? '' : (globalTier === 'WHOLESALE' ? 'text-warning' : 'text-danger');
         return `<div class="product-card${p.stock <= 0 ? ' out-of-stock' : ''}" onclick="addSearchItem(${i})">
             <div class="pc-thumb" data-seed="${escapeHtml(p.name)}"></div>
             <div class="pc-body">
@@ -528,14 +551,14 @@
                 <div class="pc-sku">${escapeHtml(p.sku)}</div>
             </div>
             <div class="pc-meta">
-                <div class="pc-price ${priceCls}">${price.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                <div class="pc-price ${priceCls}">${price === null ? '&mdash;' : price.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
                 <span class="badge stock-badge ${stockBadgeClass(p.stock)}">${p.stock} left</span>
             </div>
         </div>`;
     }
 
     function addSearchItem(i) { const p = searchResults[i]; if (p) addProduct(p); }
-    function addProduct(p) { addToCart(p.id, p.name, p.sku, p.retail, p.wholesale, p.stock); }
+    function addProduct(p) { addToCart(p.id, p.name, p.sku, p.prices, p.stock); }
 
     function showBrowse() {
         searchGrid().style.display = 'none';
@@ -568,22 +591,85 @@
         input.focus();
     }
 
-    // --- WHOLESALE TOGGLE ---
-    function toggleGlobalWholesale() {
-        isWholesale = document.getElementById('wholesale-mode-check').checked;
-        updateGridPrices();
+    // --- PRICE TIERS ---------------------------------------------------
+    // A price map is {RETAIL: n, WHOLESALE: n|null, DISTRIBUTOR: n|null}.
+    // null means the product has no price on that list and cannot be sold on it.
+    function tierPrice(prices, tier) {
+        if (!prices) return null;
+        const val = prices[tier];
+        return (val === null || val === undefined) ? null : parseFloat(val);
     }
+
+    function cardPrices(card) {
+        const num = v => (v === '' || v === undefined || v === null) ? null : parseFloat(v);
+        return {
+            RETAIL: num(card.dataset.priceRetail),
+            WHOLESALE: num(card.dataset.priceWholesale),
+            DISTRIBUTOR: num(card.dataset.priceDistributor),
+        };
+    }
+
+    function setGlobalTier(tier) {
+        if (!TIERS.includes(tier)) return;
+        globalTier = tier;
+        document.querySelectorAll('#tier-switch button').forEach(b => {
+            b.classList.toggle('active', b.dataset.tier === tier);
+        });
+
+        // Re-price what is ALREADY in the cart. This is the bit that used to be
+        // missing: flipping the switch left existing lines on the old price.
+        const stranded = [];
+        cart.forEach(item => {
+            const price = tierPrice(item.prices, tier);
+            if (price === null) {
+                stranded.push(item.name);
+            } else {
+                item.tier = tier;
+                item.price = price;
+            }
+        });
+        mergeDuplicateLines();
+        renderCart();
+        updateGridPrices();
+
+        const warn = document.getElementById('tier-warning');
+        if (stranded.length) {
+            warn.innerHTML = `<i class="ri ri-error-warning-line me-1"></i>No ${TIER_LABELS[tier].toLowerCase()} ` +
+                `price for: <strong>${stranded.map(escapeHtml).join(', ')}</strong>. Those lines kept their previous price.`;
+            warn.classList.remove('d-none');
+        } else {
+            warn.classList.add('d-none');
+        }
+    }
+
     function updateGridPrices() {
         document.querySelectorAll('#product-grid .product-card').forEach(card => {
-            const retail = parseFloat(card.dataset.priceRetail);
-            const wholesale = parseFloat(card.dataset.priceWholesale);
             const priceEl = card.querySelector('.price-display');
             if (!priceEl) return;
-            const val = isWholesale ? wholesale : retail;
-            priceEl.innerText = val.toLocaleString(undefined, {minimumFractionDigits: 2});
-            priceEl.classList.toggle('text-warning', isWholesale);
+            const price = tierPrice(cardPrices(card), globalTier);
+            priceEl.innerText = price === null ? '—' : price.toLocaleString(undefined, {minimumFractionDigits: 2});
+            priceEl.classList.toggle('text-warning', globalTier === 'WHOLESALE' && price !== null);
+            priceEl.classList.toggle('text-danger', globalTier === 'DISTRIBUTOR' && price !== null);
+            priceEl.classList.toggle('text-muted', price === null);
         });
         if (searchGrid().style.display !== 'none' && searchResults.length) renderSearch(searchResults);
+    }
+
+    // Collapse lines that ended up on the same product AND the same tier.
+    function mergeDuplicateLines() {
+        const kept = [];
+        const byKey = new Map();
+        cart.forEach(item => {
+            const key = `${item.id}|${item.tier}`;
+            const existing = byKey.get(key);
+            if (existing) {
+                existing.qty += item.qty;
+            } else {
+                byKey.set(key, item);
+                kept.push(item);
+            }
+        });
+        cart = kept;
     }
 
     // --- CUSTOMER LOGIC ---
@@ -646,21 +732,40 @@
     }
 
     // --- CART LOGIC ---
-    function addToCart(id, name, sku, retail, wholesale, stock) {
+    function addCardToCart(card) {
+        addToCart(card.dataset.productId, card.dataset.name, card.dataset.sku,
+                  cardPrices(card), card.dataset.stock);
+    }
+
+    function addToCart(id, name, sku, prices, stock) {
         id = String(id);
-        retail = parseFloat(retail);
-        wholesale = parseFloat(wholesale);
-        stock = (stock === undefined || stock === null) ? Infinity : parseInt(stock);
+        stock = (stock === undefined || stock === null || stock === '') ? Infinity : parseInt(stock);
 
         const inCart = cart.filter(i => i.id === id).reduce((s, i) => s + i.qty, 0);
         if (inCart + 1 > stock) {
             Swal.fire({ icon: 'warning', title: 'Not enough stock', text: `Only ${stock} of ${name} on hand.`, confirmButtonColor: '#696cff' });
             return;
         }
-        const currentPrice = isWholesale ? wholesale : retail;
-        const existing = cart.find(i => i.id === id && i.price === currentPrice);
+
+        // Sell at the selected list; fall back to retail when this product has
+        // no price on it, and say so rather than charging the wrong amount.
+        let tier = globalTier;
+        let price = tierPrice(prices, tier);
+        if (price === null) {
+            Swal.fire({
+                icon: 'warning',
+                title: `No ${TIER_LABELS[globalTier].toLowerCase()} price`,
+                text: `${name} has no ${TIER_LABELS[globalTier].toLowerCase()} price set. Added at the normal price instead.`,
+                confirmButtonColor: '#696cff',
+            });
+            tier = 'RETAIL';
+            price = tierPrice(prices, 'RETAIL');
+        }
+        if (price === null) return;  // not sellable at all
+
+        const existing = cart.find(i => i.id === id && i.tier === tier);
         if (existing) { existing.qty++; }
-        else { cart.push({ id, name, price: currentPrice, sku, qty: 1, isWholesale, retailPrice: retail, wholesalePrice: wholesale, stock }); }
+        else { cart.push({ id, name, sku, qty: 1, tier, price, prices, stock }); }
         renderCart();
     }
 
@@ -682,12 +787,23 @@
 
     function removeItem(index) { cart.splice(index, 1); renderCart(); }
 
+    // Click a line's tag to cycle it through the price lists that product has.
     function toggleItemPrice(index) {
         const item = cart[index];
-        if (item.isWholesale) { item.price = item.retailPrice; item.isWholesale = false; }
-        else { item.price = item.wholesalePrice; item.isWholesale = true; }
-        const dup = cart.findIndex((i, idx) => idx !== index && i.id === item.id && i.price === item.price);
-        if (dup !== -1) { cart[dup].qty += item.qty; cart.splice(index, 1); }
+        if (!item) return;
+        const available = TIERS.filter(t => tierPrice(item.prices, t) !== null);
+        if (available.length < 2) {
+            Swal.fire({
+                icon: 'info', title: 'Only one price',
+                text: `${item.name} is only priced on the ${TIER_LABELS[item.tier].toLowerCase()} list.`,
+                confirmButtonColor: '#696cff',
+            });
+            return;
+        }
+        const next = available[(available.indexOf(item.tier) + 1) % available.length];
+        item.tier = next;
+        item.price = tierPrice(item.prices, next);
+        mergeDuplicateLines();
         renderCart();
     }
 
@@ -707,10 +823,9 @@
         cart.forEach((item, index) => {
             const itemTotal = item.price * item.qty;
             total += itemTotal; units += item.qty;
-            const tag = item.isWholesale
-                ? `<span class="price-tag w" onclick="event.stopPropagation(); toggleItemPrice(${index})">Wholesale</span>`
-                : `<span class="price-tag r" onclick="event.stopPropagation(); toggleItemPrice(${index})">Retail</span>`;
-            html += `<div class="cart-item ${item.isWholesale ? 'wholesale' : ''}">
+            const tag = `<span class="price-tag ${item.tier}" title="Click to change price list"
+                 onclick="event.stopPropagation(); toggleItemPrice(${index})">${TIER_LABELS[item.tier]}</span>`;
+            html += `<div class="cart-item tier-${item.tier}">
                 <div class="ci-body">
                     <div class="ci-name">${escapeHtml(item.name)} ${tag}</div>
                     <div class="ci-sub">${escapeHtml(item.sku)} &middot; @ ${item.price.toFixed(2)}</div>
@@ -838,7 +953,13 @@
             payments.push({ method: method, amount: paymentAmount });
             totalPaidAmount = paymentAmount;
         }
-        const payload = { cart: cart, payments: payments, customer_id: selectedCustomerId, total_amount: cartTotal };
+        // Send the price LIST per line. The server looks the money up itself;
+        // `price` goes along only so a stale page is caught and rejected.
+        const payload = {
+            cart: cart.map(i => ({ id: i.id, qty: i.qty, tier: i.tier, price: i.price })),
+            payments: payments,
+            customer_id: selectedCustomerId,
+        };
         try {
             const response = await fetch('/sales/process/', {
                 method: 'POST',
@@ -848,14 +969,18 @@
             const result = await response.json();
             if (result.success) {
                 bootstrap.Modal.getInstance(document.getElementById('checkoutModal')).hide();
-                let change = totalPaidAmount - cartTotal;
-                let debt = 0;
-                if (change < 0) { debt = Math.abs(change); change = 0; }
-                const recHtml = buildReceiptHTML(result.invoice_number, new Date().toLocaleString(), cart, payments, cartTotal, totalPaidAmount, change, debt);
+                // Print what the server recorded, not what the page calculated.
+                const serverTotal = result.total_amount;
+                const change = result.change_due || 0;
+                const debt = result.balance_due || 0;
+                const recHtml = buildReceiptHTML(result.invoice_number, new Date().toLocaleString(),
+                                                 result.lines || [], payments, serverTotal,
+                                                 result.amount_paid, change, debt);
                 document.getElementById('receipt-preview-content').innerHTML = recHtml;
                 document.getElementById('thermal-receipt-content').innerHTML = recHtml;
                 new bootstrap.Modal(document.getElementById('receiptModal')).show();
                 cart = []; renderCart(); selectedCustomerId = null;
+                setGlobalTier('RETAIL');
                 document.getElementById('selected-customer-name').innerText = "Guest Customer";
                 btn.disabled = false; btn.innerText = "COMPLETE SALE";
                 resetSearch();
@@ -872,13 +997,14 @@
 
     function buildReceiptHTML(inv, date, items, payments, total, tendered, change, debt) {
         const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        // `items` are the lines the SERVER recorded: unit_price/line_total/tier.
         let rows = items.map(i => `
         <div class="print-item">
-            <div class="print-item-name">${esc(i.name)}</div>
+            <div class="print-item-name">${esc(i.name)}${i.tier && i.tier !== 'RETAIL' ? ` (${esc(i.tier_label)})` : ''}</div>
             <div class="print-row">
-                <span class="print-col-name">@ ${i.price.toFixed(2)}</span>
+                <span class="print-col-name">@ ${i.unit_price.toFixed(2)}</span>
                 <span class="print-col-qty">${i.qty}</span>
-                <span class="print-col-total">${(i.price * i.qty).toFixed(2)}</span>
+                <span class="print-col-total">${i.line_total.toFixed(2)}</span>
             </div>
         </div>`).join('');
         let paymentsHtml = payments.map(p => `<div class="print-row" style="display:flex;justify-content:space-between;"><span>${p.method} TENDERED:</span><span>${p.amount.toFixed(2)}</span></div>`).join('');

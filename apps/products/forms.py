@@ -14,7 +14,7 @@ class ProductForm(forms.ModelForm):
             'location',
             'name', 'category', 'brand', 'unit',
             'sku', 'barcode',
-            'cost_price', 'selling_price', 'wholesale_price',
+            'cost_price', 'selling_price', 'wholesale_price', 'distributor_price',
             'tax_rate', 'low_stock_threshold',
             'is_perishable', 'is_returnable',
             'weight_kg', 'dimensions', 'shelf_location',

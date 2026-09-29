@@ -59,12 +59,20 @@
                                 <td class="text-muted ps-3">Cost Price</td>
                                 <td class="text-end pe-3">{{ product.cost_price|intcomma }}</td>
                             </tr>
-                            {% if product.wholesale_price %}
                             <tr>
                                 <td class="text-muted ps-3">Wholesale</td>
-                                <td class="text-end pe-3">{{ product.wholesale_price|intcomma }}</td>
+                                <td class="text-end pe-3">
+                                    {% if product.wholesale_price is not None %}{{ product.wholesale_price|intcomma }}
+                                    {% else %}<span class="text-muted">not set</span>{% endif %}
+                                </td>
                             </tr>
-                            {% endif %}
+                            <tr>
+                                <td class="text-muted ps-3">Distributor</td>
+                                <td class="text-end pe-3">
+                                    {% if product.distributor_price is not None %}{{ product.distributor_price|intcomma }}
+                                    {% else %}<span class="text-muted">not set</span>{% endif %}
+                                </td>
+                            </tr>
                             <tr>
                                 <td class="text-muted ps-3">Tax Rate</td>
                                 <td class="text-end pe-3">{{ product.tax_rate }}%</td>

@@ -142,6 +142,15 @@ class SaleItem(models.Model):
     unit_price = models.DecimalField(max_digits=12, decimal_places=2)
     unit_cost = models.DecimalField(max_digits=12, decimal_places=2)
 
+    # Which price list this line was charged at. Recorded so receipts, margin
+    # reports and audits can tell a wholesale line from a retail one.
+    price_tier = models.CharField(
+        max_length=20,
+        choices=[('RETAIL', _('Retail')), ('WHOLESALE', _('Wholesale')), ('DISTRIBUTOR', _('Distributor'))],
+        default='RETAIL',
+        db_index=True,
+    )
+
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     total_price = models.DecimalField(max_digits=12, decimal_places=2)
 

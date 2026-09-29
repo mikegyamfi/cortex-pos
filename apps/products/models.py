@@ -104,6 +104,8 @@ class Product(BaseRetailModel):
     selling_price = models.DecimalField(max_digits=12, decimal_places=2, db_index=True)
     wholesale_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
                                           help_text="Discounted price for bulk buyers")
+    distributor_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+                                            help_text="Lowest tier — price for distributors / resellers")
 
     # Tax & Settings
     tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00,
@@ -130,6 +132,29 @@ class Product(BaseRetailModel):
                 condition=models.Q(barcode__isnull=False),
             ),
         ]
+
+    class PriceTier(models.TextChoices):
+        RETAIL = 'RETAIL', _('Retail')
+        WHOLESALE = 'WHOLESALE', _('Wholesale')
+        DISTRIBUTOR = 'DISTRIBUTOR', _('Distributor')
+
+    def price_for_tier(self, tier):
+        """
+        The one authoritative price lookup. Returns None when the tier is not
+        configured for this product, so callers must decide explicitly rather
+        than silently charging the wrong amount.
+        """
+        if tier == self.PriceTier.RETAIL:
+            return self.selling_price
+        if tier == self.PriceTier.WHOLESALE:
+            return self.wholesale_price
+        if tier == self.PriceTier.DISTRIBUTOR:
+            return self.distributor_price
+        return None
+
+    def available_tiers(self):
+        """Tiers this product actually has a price for (retail is always set)."""
+        return [t for t in self.PriceTier if self.price_for_tier(t) is not None]
 
     def save(self, *args, **kwargs):
         if not self.slug:

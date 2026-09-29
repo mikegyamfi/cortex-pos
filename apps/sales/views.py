@@ -122,8 +122,13 @@ def product_search_api(request):
         'sku': p.sku,
         'barcode': p.barcode or '',
         'category_id': p.category_id,
-        'retail': float(p.selling_price),
-        'wholesale': float(p.wholesale_price if p.wholesale_price is not None else p.selling_price),
+        # Every tier the product is actually priced for. A tier that is not set
+        # comes back as null so the POS can grey it out instead of guessing.
+        'prices': {
+            'RETAIL': float(p.selling_price),
+            'WHOLESALE': float(p.wholesale_price) if p.wholesale_price is not None else None,
+            'DISTRIBUTOR': float(p.distributor_price) if p.distributor_price is not None else None,
+        },
         'stock': int(stock_map.get(p.id, 0)),
     } for p in products]
 
@@ -158,12 +163,13 @@ def process_sale(request):
         # ------------------------------------------------------------------
         # 1. RESOLVE PRICES SERVER-SIDE (never trust client-sent amounts)
         # ------------------------------------------------------------------
-        # Each line price MUST match the product's current retail or
-        # wholesale price. The authoritative bill total is computed here from
-        # the catalogue — not taken from the browser — so recorded revenue
-        # can never be tampered with or drift from the price list.
+        # The browser sends WHICH PRICE LIST it is selling at, never an amount.
+        # The server looks the money up in the catalogue, so a tampered or
+        # stale page cannot change what gets recorded. If the line also carries
+        # a price, it is treated as a claim to be verified and any mismatch
+        # aborts the sale rather than being silently corrected.
         qty_per_product = {}
-        resolved = []  # [{pid, qty, unit_price, product}]
+        resolved = []  # [{pid, qty, unit_price, tier, product}]
         for entry in cart:
             try:
                 pid = int(entry['id'])
@@ -174,25 +180,51 @@ def process_sale(request):
                 continue
 
             try:
-                product = Product.objects.get(id=pid, is_active=True)
+                product = Product.objects.get(id=pid, is_active=True, location=location)
             except Product.DoesNotExist:
                 return JsonResponse({'success': False, 'message': f'Product {pid} not found.'}, status=400)
 
-            retail = _q(product.selling_price)
-            wholesale = _q(product.wholesale_price) if product.wholesale_price is not None else retail
-            client_price = _q(str(entry.get('price', 0)))
-            if client_price == retail:
-                unit_price = retail
-            elif client_price == wholesale:
-                unit_price = wholesale
-            else:
+            # Which price list? Default to retail when the client says nothing.
+            tier = str(entry.get('tier') or Product.PriceTier.RETAIL).upper()
+            if tier not in Product.PriceTier.values:
                 return JsonResponse({
                     'success': False,
-                    'message': f'Price for {product.name} is out of date. Please refresh the POS and try again.',
+                    'message': f'Unknown price type {tier!r} for {product.name}.',
                 }, status=400)
 
+            tier_price = product.price_for_tier(tier)
+            if tier_price is None:
+                label = Product.PriceTier(tier).label
+                return JsonResponse({
+                    'success': False,
+                    'message': f'{product.name} has no {label.lower()} price set. '
+                               f'Set one on the product before selling at that price.',
+                }, status=400)
+
+            unit_price = _q(tier_price)
+            if unit_price <= 0:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'{product.name} has an invalid price of {unit_price}.',
+                }, status=400)
+
+            # Cross-check anything the browser claimed, so a stale page is
+            # caught instead of quietly charging a different amount.
+            claimed = entry.get('price', None)
+            if claimed not in (None, ''):
+                try:
+                    if _q(str(claimed)) != unit_price:
+                        raise ValueError
+                except (ValueError, ArithmeticError):
+                    return JsonResponse({
+                        'success': False,
+                        'message': f'Price for {product.name} is out of date. '
+                                   f'Please refresh the POS and try again.',
+                    }, status=400)
+
             qty_per_product[pid] = qty_per_product.get(pid, 0) + qty
-            resolved.append({'pid': pid, 'qty': qty, 'unit_price': unit_price, 'product': product})
+            resolved.append({'pid': pid, 'qty': qty, 'unit_price': unit_price,
+                             'tier': tier, 'product': product})
 
         if not resolved:
             return JsonResponse({'success': False, 'message': 'Cart is empty.'}, status=400)
@@ -261,6 +293,7 @@ def process_sale(request):
                     unit_price=unit_price,
                     unit_cost=batch.cost_price,
                     total_price=_q(unit_price * take),
+                    price_tier=r['tier'],
                 )
 
                 batch.quantity -= take
@@ -365,6 +398,18 @@ def process_sale(request):
             except Customer.DoesNotExist:
                 pass
 
+        # Hand back the lines AS RECORDED so the receipt prints the server's
+        # figures, never the browser's arithmetic.
+        receipt_lines = [{
+            'name': r['product'].name,
+            'sku': r['product'].sku,
+            'qty': r['qty'],
+            'tier': r['tier'],
+            'tier_label': Product.PriceTier(r['tier']).label,
+            'unit_price': float(r['unit_price']),
+            'line_total': float(_q(r['unit_price'] * r['qty'])),
+        } for r in resolved]
+
         return JsonResponse({
             'success': True,
             'invoice_number': sale.invoice_number,
@@ -372,6 +417,8 @@ def process_sale(request):
             'total_amount': float(sale.total_amount),
             'amount_paid': float(sale.amount_paid),
             'change_due': float(change_due),
+            'balance_due': float(sale.balance_remaining),
+            'lines': receipt_lines,
         })
 
     except Exception as e:

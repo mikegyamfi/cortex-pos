@@ -70,6 +70,11 @@
                                 </div>
                                 <div class="col-md-4">
                                     {{ form.wholesale_price|as_crispy_field }}
+                                    <small class="text-muted">Bulk buyers. Leave blank if not sold wholesale.</small>
+                                </div>
+                                <div class="col-md-4">
+                                    {{ form.distributor_price|as_crispy_field }}
+                                    <small class="text-muted">Resellers. Leave blank if not sold to distributors.</small>
                                 </div>
                                 <div class="col-md-4">
                                     {{ form.tax_rate|as_crispy_field }}
