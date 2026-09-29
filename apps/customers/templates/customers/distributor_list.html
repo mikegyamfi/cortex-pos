@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Distributors | Cortex POS{% endblock %}
+
+{% block content %}
+<div class="row gy-4">
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h4 class="fw-bold mb-0">Distributors</h4>
+            <p class="mb-0 text-muted">Customers who buy at the distributor price list.</p>
+        </div>
+        <a href="{% url 'customers:distributor_create' %}" class="btn btn-primary">
+            <i class="ri ri-add-line me-1"></i> Add Distributor
+        </a>
+    </div>
+
+    <div class="col-12">
+        <div class="row g-3">
+            <div class="col-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body d-flex align-items-center justify-content-between">
+                        <div>
+                            <small class="text-muted d-block">Distributors</small>
+                            <h4 class="mb-0 fw-bold">{{ rows|length }}</h4>
+                        </div>
+                        <span class="badge bg-label-primary rounded p-2"><i class="ri ri-truck-line ri-22px"></i></span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body d-flex align-items-center justify-content-between">
+                        <div>
+                            <small class="text-muted d-block">Total Billed</small>
+                            <h4 class="mb-0 fw-bold text-primary">{{ total_billed|floatformat:2|intcomma }}</h4>
+                        </div>
+                        <span class="badge bg-label-info rounded p-2"><i class="ri ri-bill-line ri-22px"></i></span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body d-flex align-items-center justify-content-between">
+                        <div>
+                            <small class="text-muted d-block">Owing</small>
+                            <h4 class="mb-0 fw-bold {% if total_owing %}text-danger{% else %}text-muted{% endif %}">
+                                {{ total_owing|floatformat:2|intcomma }}
+                            </h4>
+                        </div>
+                        <span class="badge bg-label-danger rounded p-2"><i class="ri ri-hand-coin-line ri-22px"></i></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <form method="get" class="row g-2 align-items-center">
+            <div class="col-12 col-md-6 col-lg-5">
+                <div class="input-group input-group-merge">
+                    <span class="input-group-text"><i class="ri ri-search-line"></i></span>
+                    <input type="text" name="q" class="form-control" value="{{ query }}"
+                           placeholder="Search name, contact, phone, email or location...">
+                </div>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary"><i class="ri ri-search-line me-1"></i> Search</button>
+            </div>
+            {% if query %}
+            <div class="col-auto">
+                <a href="{% url 'customers:distributor_list' %}" class="btn btn-outline-secondary">
+                    <i class="ri ri-close-line me-1"></i> Clear
+                </a>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="col-12">
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Distributor</th>
+                            <th>Contact</th>
+                            <th>Phone</th>
+                            <th>Location</th>
+                            <th class="text-end">Purchases</th>
+                            <th class="text-end">Billed</th>
+                            <th class="text-end">Owing</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'customers:distributor_detail' row.distributor.pk %}"
+                                   class="fw-bold text-primary">{{ row.distributor.get_display_name }}</a>
+                                {% if row.distributor.email %}
+                                    <br><small class="text-muted">{{ row.distributor.email }}</small>
+                                {% endif %}
+                            </td>
+                            <td>{{ row.distributor.contact_person|default:"—" }}</td>
+                            <td>
+                                {{ row.distributor.phone_number }}
+                                {% if row.distributor.backup_phone %}
+                                    <br><small class="text-muted">{{ row.distributor.backup_phone }}</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if row.distributor.location %}
+                                    <span class="badge bg-label-info">{{ row.distributor.location.name }}</span>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                                {% if row.distributor.address %}
+                                    <br><small class="text-muted">{{ row.distributor.address|truncatechars:40 }}</small>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ row.purchase_count }}</td>
+                            <td class="text-end">{{ row.billed|floatformat:2|intcomma }}</td>
+                            <td class="text-end">
+                                {% if row.owing %}
+                                    <span class="badge bg-danger rounded-pill">{{ row.owing|floatformat:2|intcomma }}</span>
+                                {% else %}
+                                    <span class="text-muted">0.00</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center text-nowrap">
+                                <a href="{% url 'customers:distributor_detail' row.distributor.pk %}"
+                                   class="btn btn-sm btn-primary" title="Open and sell">
+                                    <i class="ri ri-shopping-bag-line"></i> Sell
+                                </a>
+                                <a href="{% url 'customers:distributor_edit' row.distributor.pk %}"
+                                   class="btn btn-sm btn-outline-secondary" title="Edit">
+                                    <i class="ri ri-pencil-line"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center py-5 text-muted">
+                                {% if query %}
+                                    No distributor matches "{{ query }}".
+                                {% else %}
+                                    No distributors yet.
+                                    <a href="{% url 'customers:distributor_create' %}">Add the first one</a>.
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

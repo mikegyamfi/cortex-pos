@@ -18,6 +18,7 @@ from ..inventory.models import StockBatch, StockAdjustment
 from ..location.models import Location
 from ..notifications.services import SMSService
 from ..products.models import Category, Product
+from .services import SaleError, receipt_lines, record_sale, resolve_cart
 
 
 TWO_PLACES = Decimal('0.01')
@@ -140,290 +141,61 @@ def product_search_api(request):
 @require_POST
 @transaction.atomic
 def process_sale(request):
+    """
+    POS checkout. A thin wrapper over apps.sales.services — the browser chooses
+    a price LIST per line and the service looks every amount up in the catalogue.
+    """
     try:
         data = json.loads(request.body)
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'message': 'Malformed request.'}, status=400)
 
-        cart = data.get('cart', [])
-        payments = data.get('payments', [])
-        customer_id = data.get('customer_id')
+    cart = data.get('cart', [])
+    payments = data.get('payments', [])
+    customer_id = data.get('customer_id')
 
-        if not cart:
-            return JsonResponse({'success': False, 'message': 'Cart is empty.'}, status=400)
+    if not cart:
+        return JsonResponse({'success': False, 'message': 'Cart is empty.'}, status=400)
 
-        user = request.user
-        location = user.assigned_location
+    user = request.user
+    location = user.assigned_location
 
-        session = RegisterSession.objects.filter(
-            user=user, location=location, status=RegisterSession.Status.OPEN
-        ).first()
-
-        if not session:
-            return JsonResponse({'success': False, 'message': 'No active register session. Please open register.'}, status=400)
-
-        # ------------------------------------------------------------------
-        # 1. RESOLVE PRICES SERVER-SIDE (never trust client-sent amounts)
-        # ------------------------------------------------------------------
-        # The browser sends WHICH PRICE LIST it is selling at, never an amount.
-        # The server looks the money up in the catalogue, so a tampered or
-        # stale page cannot change what gets recorded. If the line also carries
-        # a price, it is treated as a claim to be verified and any mismatch
-        # aborts the sale rather than being silently corrected.
-        qty_per_product = {}
-        resolved = []  # [{pid, qty, unit_price, tier, product}]
-        for entry in cart:
-            try:
-                pid = int(entry['id'])
-                qty = int(entry['qty'])
-            except (KeyError, TypeError, ValueError):
-                return JsonResponse({'success': False, 'message': 'Malformed cart entry.'}, status=400)
-            if qty <= 0:
-                continue
-
-            try:
-                product = Product.objects.get(id=pid, is_active=True, location=location)
-            except Product.DoesNotExist:
-                return JsonResponse({'success': False, 'message': f'Product {pid} not found.'}, status=400)
-
-            # Which price list? Default to retail when the client says nothing.
-            tier = str(entry.get('tier') or Product.PriceTier.RETAIL).upper()
-            if tier not in Product.PriceTier.values:
-                return JsonResponse({
-                    'success': False,
-                    'message': f'Unknown price type {tier!r} for {product.name}.',
-                }, status=400)
-
-            tier_price = product.price_for_tier(tier)
-            if tier_price is None:
-                label = Product.PriceTier(tier).label
-                return JsonResponse({
-                    'success': False,
-                    'message': f'{product.name} has no {label.lower()} price set. '
-                               f'Set one on the product before selling at that price.',
-                }, status=400)
-
-            unit_price = _q(tier_price)
-            if unit_price <= 0:
-                return JsonResponse({
-                    'success': False,
-                    'message': f'{product.name} has an invalid price of {unit_price}.',
-                }, status=400)
-
-            # Cross-check anything the browser claimed, so a stale page is
-            # caught instead of quietly charging a different amount.
-            claimed = entry.get('price', None)
-            if claimed not in (None, ''):
-                try:
-                    if _q(str(claimed)) != unit_price:
-                        raise ValueError
-                except (ValueError, ArithmeticError):
-                    return JsonResponse({
-                        'success': False,
-                        'message': f'Price for {product.name} is out of date. '
-                                   f'Please refresh the POS and try again.',
-                    }, status=400)
-
-            qty_per_product[pid] = qty_per_product.get(pid, 0) + qty
-            resolved.append({'pid': pid, 'qty': qty, 'unit_price': unit_price,
-                             'tier': tier, 'product': product})
-
-        if not resolved:
-            return JsonResponse({'success': False, 'message': 'Cart is empty.'}, status=400)
-
-        # Authoritative total (VAT-inclusive sticker prices x quantities).
-        total_amount = _q(sum((r['unit_price'] * r['qty'] for r in resolved), Decimal('0.00')))
-
-        # ------------------------------------------------------------------
-        # 2. STOCK VALIDATION (with row-level lock to prevent oversell races)
-        # ------------------------------------------------------------------
-        # Lock batches per product and check availability up-front.
-        # Postgres honors select_for_update; SQLite ignores it harmlessly.
-        batches_by_product = {}
-        for pid, qty_needed in qty_per_product.items():
-            batches = list(
-                StockBatch.objects.select_for_update()
-                .filter(product_id=pid, location=location, quantity__gt=0)
-                .order_by('expiry_date', 'received_date')
-            )
-            available = sum(b.quantity for b in batches)
-            if available < qty_needed:
-                name = next(r['product'].name for r in resolved if r['pid'] == pid)
-                return JsonResponse({
-                    'success': False,
-                    'message': f'Insufficient stock for {name}. Requested {qty_needed}, available {available}.'
-                }, status=400)
-            batches_by_product[pid] = batches
-
-        # ------------------------------------------------------------------
-        # 3. CREATE SALE & DEDUCT STOCK (FEFO)
-        # ------------------------------------------------------------------
-        sale = Sale.objects.create(
-            location=location,
-            cashier=user,
-            register_session=session,
-            total_amount=total_amount,
-            status=Sale.Status.COMPLETED,
-            amount_paid=0,
-            customer_id=customer_id
+    session = RegisterSession.objects.filter(
+        user=user, location=location, status=RegisterSession.Status.OPEN
+    ).first()
+    if not session:
+        return JsonResponse(
+            {'success': False, 'message': 'No active register session. Please open register.'},
+            status=400,
         )
 
-        sale_subtotal = Decimal('0.00')   # excl. tax
-        sale_tax_total = Decimal('0.00')
-        tax_by_rate = {}                   # Decimal rate -> Decimal tax amount
+    customer = None
+    if customer_id:
+        customer = Customer.objects.filter(id=customer_id).first()
 
-        for r in resolved:
-            pid = r['pid']
-            unit_price = r['unit_price']
-            qty_remaining = r['qty']
-            product = r['product']
+    try:
+        resolved, qty_per_product = resolve_cart(cart, location)
+        sale = record_sale(
+            location=location, user=user, session=session, customer=customer,
+            resolved=resolved, qty_per_product=qty_per_product, payments=payments,
+        )
+    except SaleError as err:
+        transaction.set_rollback(True)
+        return JsonResponse({'success': False, 'message': str(err)}, status=400)
+    except Exception as err:
+        transaction.set_rollback(True)
+        return JsonResponse({'success': False, 'message': str(err)}, status=400)
 
-            # FEFO allocation across the locked batch list (shared across cart entries for the same product)
-            batches = batches_by_product[pid]
-            for batch in batches:
-                if qty_remaining <= 0:
-                    break
-                if batch.quantity <= 0:
-                    continue
-                take = min(batch.quantity, qty_remaining)
-
-                SaleItem.objects.create(
-                    sale=sale,
-                    product=product,
-                    source_batch=batch,
-                    quantity=take,
-                    unit_price=unit_price,
-                    unit_cost=batch.cost_price,
-                    total_price=_q(unit_price * take),
-                    price_tier=r['tier'],
-                )
-
-                batch.quantity -= take
-                batch.save()
-                qty_remaining -= take
-
-            if qty_remaining > 0:
-                # Should never happen — we validated availability above with row locks.
-                raise RuntimeError(
-                    f"Stock validation passed but ran short during allocation for {product.name}."
-                )
-
-            # Tax / subtotal split (treat unit_price as VAT-inclusive)
-            line_total = _q(unit_price * Decimal(r['qty']))
-            rate = Decimal(product.tax_rate or 0)
-            if rate > 0:
-                line_tax = _q(line_total * rate / (Decimal('100') + rate))
-                line_excl = _q(line_total - line_tax)
-                tax_by_rate[rate] = tax_by_rate.get(rate, Decimal('0.00')) + line_tax
-                sale_tax_total += line_tax
-            else:
-                line_excl = line_total
-            sale_subtotal += line_excl
-
-        sale.subtotal = _q(sale_subtotal)
-        sale.total_tax = _q(sale_tax_total)
-
-        # Persist tax breakdown rows (one per distinct rate)
-        for rate, amt in tax_by_rate.items():
-            if amt > 0:
-                SaleTax.objects.create(
-                    sale=sale,
-                    tax_name='VAT',
-                    tax_rate=rate,
-                    tax_amount=_q(amt),
-                )
-
-        # ------------------------------------------------------------------
-        # 4. PAYMENTS + CHANGE (balanced via negative SalePayment)
-        # ------------------------------------------------------------------
-        total_paid = Decimal('0.00')
-        total_cash_tendered = Decimal('0.00')
-        valid_methods = {m.value for m in SalePayment.PaymentMethod}
-
-        for pay in payments:
-            amount = _q(str(pay.get('amount', 0)))
-            method = pay.get('method')
-            if amount <= 0:
-                continue
-            if method not in valid_methods:
-                return JsonResponse({'success': False, 'message': f'Invalid payment method: {method}.'}, status=400)
-
-            SalePayment.objects.create(
-                sale=sale, payment_method=method, amount=amount, processed_by=user
-            )
-            total_paid += amount
-
-            if method == 'CASH':
-                total_cash_tendered += amount
-            elif method == 'MOMO':
-                session.total_momo_sales += amount
-            elif method == 'CARD':
-                session.total_card_sales += amount
-
-        change_due = max(Decimal('0.00'), total_paid - total_amount)
-
-        if change_due > 0:
-            SalePayment.objects.create(
-                sale=sale,
-                payment_method=SalePayment.PaymentMethod.CASH,
-                amount=-change_due,
-                reference_id="CHANGE GIVEN",
-                processed_by=user
-            )
-            total_paid -= change_due
-
-        sale.amount_paid = total_paid
-        sale.change_due = change_due
-        sale.save()
-
-        # Drawer reflects net cash retained
-        net_cash_added = total_cash_tendered - change_due
-        session.total_cash_sales += net_cash_added
-        session.save()
-
-        # ------------------------------------------------------------------
-        # 4. CUSTOMER STATS + SMS
-        # ------------------------------------------------------------------
-        if customer_id:
-            try:
-                customer = Customer.objects.get(id=customer_id)
-                customer.total_spent += sale.total_amount
-                customer.total_visits += 1
-                customer.last_visit_date = timezone.now()
-                customer.save()
-
-                if customer.accepts_marketing_sms and SMSService:
-                    try:
-                        SMSService.send_receipt(sale)
-                    except Exception as sms_error:
-                        print(f"SMS Error: {sms_error}")
-            except Customer.DoesNotExist:
-                pass
-
-        # Hand back the lines AS RECORDED so the receipt prints the server's
-        # figures, never the browser's arithmetic.
-        receipt_lines = [{
-            'name': r['product'].name,
-            'sku': r['product'].sku,
-            'qty': r['qty'],
-            'tier': r['tier'],
-            'tier_label': Product.PriceTier(r['tier']).label,
-            'unit_price': float(r['unit_price']),
-            'line_total': float(_q(r['unit_price'] * r['qty'])),
-        } for r in resolved]
-
-        return JsonResponse({
-            'success': True,
-            'invoice_number': sale.invoice_number,
-            'sale_id': sale.id,
-            'total_amount': float(sale.total_amount),
-            'amount_paid': float(sale.amount_paid),
-            'change_due': float(change_due),
-            'balance_due': float(sale.balance_remaining),
-            'lines': receipt_lines,
-        })
-
-    except Exception as e:
-        # transaction.atomic rolls back automatically on exception
-        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+    return JsonResponse({
+        'success': True,
+        'invoice_number': sale.invoice_number,
+        'sale_id': sale.id,
+        'total_amount': float(sale.total_amount),
+        'amount_paid': float(sale.amount_paid),
+        'change_due': float(sale.change_due),
+        'balance_due': float(sale.balance_remaining),
+        'lines': receipt_lines(resolved),
+    })
 
 
 @login_required

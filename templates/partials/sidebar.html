@@ -94,6 +94,14 @@
           <div data-i18n="Customers">Customers</div>
         </a>
     </li>
+    {% if user.role in 'OWNER,MANAGER' %}
+    <li class="menu-item">
+        <a href="{% url 'customers:distributor_list' %}" class="menu-link">
+          <i class="menu-icon icon-base ri ri-truck-line"></i>
+          <div data-i18n="Distributors">Distributors</div>
+        </a>
+    </li>
+    {% endif %}
     {% endif %}
 
     <!-- ============================================== -->

@@ -25,6 +25,21 @@ class Customer(BaseRetailModel):
     email = models.EmailField(null=True, blank=True)
     address = models.TextField(blank=True)
 
+    # A distributor is a customer who buys on the distributor price list. They
+    # get their own page, but stay Customers so debt, arrears, statements and
+    # SMS all keep working the same way.
+    is_distributor = models.BooleanField(
+        default=False, db_index=True,
+        help_text="Buys at the distributor price list and appears on the Distributors page."
+    )
+    company_name = models.CharField(max_length=255, blank=True,
+                                    help_text="Trading name, for distributors and businesses.")
+    backup_phone = models.CharField(max_length=20, blank=True,
+                                    help_text="Second number to reach them on.")
+    contact_person = models.CharField(max_length=150, blank=True,
+                                      help_text="Who to speak to at the company.")
+    notes = models.TextField(blank=True)
+
     # Marketing Flags (GDPR/Data Protection compliance)
     accepts_marketing_sms = models.BooleanField(default=True)
     accepts_marketing_email = models.BooleanField(default=False)
@@ -50,8 +65,10 @@ class Customer(BaseRetailModel):
 
     @property
     def get_display_name(self):
+        if self.company_name:
+            return self.company_name
         if self.first_name:
-            return f"{self.first_name} {self.last_name}"
+            return f"{self.first_name} {self.last_name}".strip()
         return "Valued Customer"
 
 
