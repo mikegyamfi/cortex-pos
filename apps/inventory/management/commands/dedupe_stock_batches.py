@@ -193,5 +193,5 @@ class Command(BaseCommand):
             ))
         else:
             self.stdout.write(self.style.WARNING(
-                summary + "\nDRY RUN — nothing was written. Re-run with --commit to apply."
+                summary + "\nDRY RUN - nothing was written. Re-run with --commit to apply."
             ))
