@@ -378,3 +378,28 @@ class SellToDistributorTests(DistributorTestBase):
             reverse('customers:distributor_sell', args=[self.distributor.pk]),
             {f'qty_{self.product.id}': 1, 'payment_method': 'CREDIT'})
         self.assertRedirects(res, reverse('sales:detail', args=[Sale.objects.get().pk]))
+
+
+class DistributorSidebarTests(DistributorTestBase):
+    """The menu entry must exist, and only for the roles allowed to use it."""
+
+    def test_link_shows_for_owner_and_manager(self):
+        for user in (self.owner, self.manager):
+            with self.subTest(role=user.role):
+                self.client.force_login(user)
+                html = self.client.get(reverse('customers:list')).content.decode()
+                self.assertIn(reverse('customers:distributor_list'), html)
+                self.assertIn('Distributors', html)
+
+    def test_link_hidden_from_roles_that_cannot_use_it(self):
+        for role in ('CASHIER', 'SALESPERSON', 'WAREHOUSE_STAFF', 'ACCOUNTANT'):
+            with self.subTest(role=role):
+                user = User.objects.create_user(
+                    username=f'sidebar{role}', password='pw', role=role,
+                    assigned_location=self.shop,
+                )
+                self.client.force_login(user)
+                res = self.client.get(reverse('sales:pos'))
+                if res.status_code == 200:
+                    self.assertNotIn(reverse('customers:distributor_list'),
+                                     res.content.decode())
