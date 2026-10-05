@@ -902,3 +902,85 @@ class ReconcileTests(MoneyTestBase):
         call_command('reconcile_sales', stdout=out)
         self.assertIn('Everything tallies', out.getvalue())
         out.getvalue().encode('ascii')   # Windows consoles: no characters they can't print
+
+
+# =============================================================================
+# A shift left open from an earlier day must be closed first
+# =============================================================================
+class StaleShiftTests(MoneyTestBase):
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.cashier)
+        self.session = self.open_session(self.cashier)
+
+    def make_stale(self, session=None, days=1):
+        session = session or self.session
+        RegisterSession.objects.filter(pk=session.pk).update(start_time=timezone.now() - timedelta(days=days))
+
+    def test_todays_shift_sells_normally(self):
+        self.assertEqual(self.client.get(reverse('sales:pos')).status_code, 200)
+        self.assertTrue(self.sell(1).json()['success'])
+
+    def test_pos_sends_you_to_close_yesterdays_shift(self):
+        self.make_stale()
+        resp = self.client.get(reverse('sales:pos'))
+        self.assertRedirects(resp, reverse('sales:close_register'), fetch_redirect_response=False)
+        page = self.client.get(reverse('sales:close_register'))
+        self.assertContains(page, 'This shift started on')
+
+    def test_checkout_on_a_stale_shift_is_refused(self):
+        # e.g. a POS tab left open overnight.
+        self.make_stale()
+        self.assert_rejected(self.sell(2), 'still open')
+        self.assertEqual(self.stock(), 11)
+        self.assertFalse(Sale.objects.exists())
+
+    def test_retry_of_a_sale_made_before_midnight_still_returns_it(self):
+        first = self.sell(2, client_ref='late-night').json()
+        self.make_stale()
+        again = self.sell(2, client_ref='late-night').json()
+        self.assertTrue(again['success'] and again['duplicate'])
+        self.assertEqual(again['invoice_number'], first['invoice_number'])
+
+    def test_debt_payments_and_refunds_wait_for_the_close(self):
+        sale = Sale.objects.get(pk=self.sell(2, payments=[], customer_id=self.customer.id).json()['sale_id'])
+        self.make_stale()
+        resp = self.client.post(reverse('sales:add_payment', args=[sale.id]), {'payment_method': 'CASH', 'amount': '20'})
+        self.assertRedirects(resp, reverse('sales:close_register'), fetch_redirect_response=False)
+        sale.refresh_from_db()
+        self.assertEqual(sale.amount_paid, D("0.00"))
+
+        self.client.force_login(self.manager)
+        mgr = self.open_session(self.manager, "0")
+        self.make_stale(mgr)
+        resp = self.client.post(reverse('sales:refund', args=[sale.id]),
+                                {'refund_items': [i.id for i in sale.items.all()], 'refund_method': 'CASH'})
+        self.assertRedirects(resp, reverse('sales:close_register'), fetch_redirect_response=False)
+        sale.refresh_from_db()
+        self.assertEqual(sale.status, Sale.Status.COMPLETED)
+
+    def test_close_then_open_today(self):
+        self.make_stale(days=3)
+        self.client.post(reverse('sales:close_register'), {'actual_cash': '100'})
+        self.session.refresh_from_db()
+        self.assertNotEqual(self.session.status, RegisterSession.Status.OPEN)
+        # Now the POS asks for today's float instead of reusing the old one.
+        self.assertTemplateUsed(self.client.get(reverse('sales:pos')), 'sales/open_register.html')
+        self.client.post(reverse('sales:pos'), {'opening_balance': '150'})
+        today = RegisterSession.objects.get(status=RegisterSession.Status.OPEN)
+        self.assertEqual(today.opening_balance, D("150.00"))
+        self.assertTrue(self.sell(1).json()['success'])
+
+    def test_distributor_sale_waits_for_the_close(self):
+        self.client.force_login(self.manager)
+        mgr = self.open_session(self.manager, "0")
+        self.make_stale(mgr)
+        self.oil.distributor_price = D("8.00")
+        self.oil.save()
+        dist = Customer.objects.create(phone_number="0249", first_name="Dist", location=self.loc,
+                                       is_distributor=True)
+        resp = self.client.post(reverse('customers:distributor_sell', args=[dist.id]),
+                                {f'qty_{self.oil.id}': '2', 'payment_method': 'CASH', 'amount_paid': '16'})
+        self.assertRedirects(resp, reverse('sales:close_register'), fetch_redirect_response=False)
+        self.assertFalse(Sale.objects.exists())

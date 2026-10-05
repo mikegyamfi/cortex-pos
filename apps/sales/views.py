@@ -21,7 +21,7 @@ from ..notifications.services import SMSService
 from ..products.models import Category, Product
 from .services import (
     SaleError, parse_money, receipt_lines, receipt_lines_for_sale, record_refund,
-    record_sale, record_settlement, resolve_cart,
+    record_sale, record_settlement, resolve_cart, shift_is_stale, stale_shift_message,
 )
 
 
@@ -89,6 +89,9 @@ def pos_view(request):
 
     # 1. Check for Active Session
     active_session = _open_session(user, location)
+    if shift_is_stale(active_session):
+        messages.warning(request, stale_shift_message(active_session))
+        return redirect('sales:close_register')
 
     if not active_session:
         if request.method == 'POST':
@@ -213,6 +216,9 @@ def process_sale(request):
                 return JsonResponse({'success': False, 'message': 'Malformed request.'}, status=400)
             # Already recorded — hand back the original, never sell it twice.
             return _sale_response(existing, receipt_lines_for_sale(existing), duplicate=True)
+
+    if shift_is_stale(session):
+        return JsonResponse({'success': False, 'message': stale_shift_message(session)}, status=400)
 
     customer = None
     if customer_id:
@@ -442,6 +448,7 @@ def close_register_view(request):
 
     return render(request, 'sales/close_register.html', {
         'session': session,
+        'stale': shift_is_stale(session),
         'expected_cash': expected_cash,
         'cash_sales': session.total_cash_sales,
         'till_expenses': till_expenses,
@@ -495,6 +502,9 @@ def add_payment(request, pk):
     if not session:
         messages.error(request, "You must have an open register to accept payments.")
         return redirect('sales:detail', pk=pk)
+    if shift_is_stale(session):
+        messages.warning(request, stale_shift_message(session))
+        return redirect('sales:close_register')
 
     # Build the list of (method, amount) tendered — single method or a split.
     method = request.POST.get('payment_method')
@@ -549,6 +559,9 @@ def process_refund(request, pk):
         if not session:
             messages.error(request, "You must have an open register to issue a refund.")
             return redirect('sales:detail', pk=pk)
+        if shift_is_stale(session):
+            messages.warning(request, stale_shift_message(session))
+            return redirect('sales:close_register')
 
         try:
             refund_value, money_returned = record_refund(

@@ -131,4 +131,7 @@ LOGIN_URL = 'users:login'
 LOGIN_REDIRECT_URL = 'dashboard:index'
 LOGOUT_REDIRECT_URL = 'users:login'
 
-
+# Reports (Business Reports, Daily Report figures) count sales from this date
+# on (YYYY-MM-DD), e.g. to start afresh after a period of bad data without
+# deleting the old sales. Empty = count everything.
+REPORTS_START_DATE = os.environ.get('REPORTS_START_DATE', '')

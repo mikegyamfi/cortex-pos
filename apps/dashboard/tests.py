@@ -120,7 +120,7 @@ class BusinessReportTests(ReportTestBase):
         # Totals cover all pages and agree with the revenue for the same dates.
         self.assertEqual(first.context['totals']['units'], 30)
         self.assertEqual(first.context['totals']['revenue'], D("150.00"))
-        self.assertEqual(first.context['totals']['revenue'], first.context['revenue_30d'])
+        self.assertEqual(first.context['totals']['revenue'], first.context['revenue_today'])
         self.assertContains(second, 'page=1')
 
     def test_page_links_keep_the_filters(self):
@@ -169,8 +169,16 @@ class BusinessReportTests(ReportTestBase):
         self.assertEqual(ctx['revenue_7d'], D("20.00"))
         self.assertEqual(ctx['revenue_30d'], D("40.00"))
         self.assertEqual(ctx['transactions_30d'], 4)
-        # The default product period is the same 30 days.
-        self.assertEqual(ctx['totals']['units'], 4)
+        # Products sold default to today; the presets cover the other windows.
+        self.assertEqual(ctx['totals']['units'], 1)
+        self.assertEqual(ctx['totals']['revenue'], ctx['revenue_today'])
+        presets = {p['label']: p for p in ctx['presets']}
+        self.assertTrue(presets['Today']['active'])
+        for label, units in (('Yesterday', 0), ('Last 7 days', 2), ('Last 30 days', 4)):
+            p = presets[label]
+            got = self.report(self.manager_a, start_date=p['start'], end_date=p['end']).context
+            self.assertEqual(got['totals']['units'], units, label)
+            self.assertTrue(next(x for x in got['presets'] if x['label'] == label)['active'])
 
     def test_custom_period(self):
         self.sell(self.cashier_a, self.oil_a, 2, days_ago=40)
@@ -336,3 +344,78 @@ class DailyReportTests(ReportTestBase):
         resp = self.client.get(reverse('dashboard:daily_report'))
         self.assertContains(resp, 'Nothing sold on this day.')
         self.assertContains(resp, 'Everything tallies')
+
+
+class ReportsStartAndSummaryTests(ReportTestBase):
+    """Starting the reports afresh from a date, and the period summary."""
+
+    def backdate(self, sale, days):
+        when = timezone.now() - timedelta(days=days)
+        Sale.objects.filter(pk=sale.pk).update(created_at=when)
+        SalePayment.objects.filter(sale=sale).update(created_at=when)
+
+    def test_period_summary(self):
+        from apps.customers.models import Customer
+        ama = Customer.objects.create(phone_number="0241", first_name="Ama", location=self.shop_a)
+        self.sell(self.cashier_a, self.oil_a, 3)                                     # 30 paid
+        resolved, per = resolve_cart([{'id': self.oil_a.id, 'qty': 2}], self.shop_a)
+        record_sale(location=self.shop_a, user=self.cashier_a, session=self.sessions[self.cashier_a.pk],
+                    resolved=resolved, qty_per_product=per, customer=ama,
+                    payments=[{'method': 'MOMO', 'amount': '5'}])                    # 20, owes 15
+        s = self.report(self.manager_a).context['summary']
+        self.assertEqual((s['revenue'], s['units'], s['sales']), (D("50.00"), 5, 2))
+        self.assertEqual(s['profit'], D("20.00"))                                    # 50 - 5 x 6
+        self.assertEqual(s['margin'], D("40"))
+        self.assertEqual(s['average'], D("25.00"))
+        self.assertEqual((s['collected'], s['owed']), (D("35.00"), D("15.00")))
+
+    def test_day_by_day_for_longer_periods(self):
+        self.backdate(self.sell(self.cashier_a, self.oil_a, 2), 2)
+        self.sell(self.cashier_a, self.oil_a, 1)
+        today = timezone.localdate()
+        ctx = self.report(self.manager_a, start_date=(today - timedelta(days=3)).isoformat(),
+                          end_date=today.isoformat()).context
+        self.assertEqual([(d['day'], d['units']) for d in ctx['by_day']],
+                         [(today - timedelta(days=n), u) for n, u in ((0, 1), (1, 0), (2, 2), (3, 0))])
+        self.assertEqual(self.report(self.manager_a).context['by_day'], [])        # one day: not needed
+
+    def test_nothing_before_the_start_date_counts(self):
+        self.backdate(self.sell(self.cashier_a, self.oil_a, 5), 3)                 # the "messed up" days
+        self.sell(self.cashier_a, self.oil_a, 2)
+        today = timezone.localdate()
+        with self.settings(REPORTS_START_DATE=today.isoformat()):
+            ctx = self.report(self.manager_a, start_date=(today - timedelta(days=10)).isoformat()).context
+            self.assertEqual(ctx['start_date'], today.isoformat())                    # clamped
+            self.assertEqual(ctx['summary']['units'], 2)
+            self.assertEqual((ctx['revenue_7d'], ctx['revenue_30d']), (D("20.00"), D("20.00")))
+            self.assertEqual(ctx['transactions_30d'], 1)
+            self.assertEqual([p['label'] for p in ctx['presets']], ['Today'])        # the rest are the same day
+            self.assertEqual(ctx['reports_start'], today)
+            self.assertContains(self.report(self.manager_a), 'Reports count sales from')
+        # Without it, everything counts again — nothing was deleted.
+        ctx = self.report(self.manager_a, start_date=(today - timedelta(days=10)).isoformat()).context
+        self.assertEqual(ctx['summary']['units'], 7)
+
+    def test_presets_after_a_start_date_a_few_days_ago(self):
+        today = timezone.localdate()
+        with self.settings(REPORTS_START_DATE=(today - timedelta(days=3)).isoformat()):
+            presets = self.report(self.manager_a).context['presets']
+        labels = [p['label'] for p in presets]
+        self.assertEqual(labels[:3], ['Today', 'Yesterday', 'Last 7 days'])
+        self.assertEqual(presets[2]['start'], (today - timedelta(days=3)).isoformat())
+        self.assertNotIn('Last 30 days', labels)                                    # same days as "Last 7 days"
+
+    def test_a_bad_start_date_setting_is_ignored(self):
+        self.sell(self.cashier_a, self.oil_a, 1)
+        with self.settings(REPORTS_START_DATE='soon'):
+            self.assertEqual(self.report(self.manager_a).context['summary']['units'], 1)
+
+    def test_daily_report_marks_days_before_the_start(self):
+        today = timezone.localdate()
+        self.client.force_login(self.manager_a)
+        with self.settings(REPORTS_START_DATE=today.isoformat()):
+            old = self.client.get(reverse('dashboard:daily_report'),
+                                  {'date': (today - timedelta(days=1)).isoformat()})
+            self.assertTrue(old.context['before_start'])
+            self.assertContains(old, 'before the reports start date')
+            self.assertFalse(self.client.get(reverse('dashboard:daily_report')).context['before_start'])

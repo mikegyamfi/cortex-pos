@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from django.core.paginator import Paginator
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
+from django.db.models.functions import TruncDate
 from django.http import HttpResponseForbidden
 
 from apps.analytics.models import DailyShopSummary
@@ -193,6 +195,17 @@ def _date_range(request, default_days=None):
     return start, end
 
 
+def reports_start():
+    """
+    The first day the reports count (settings.REPORTS_START_DATE, from the
+    REPORTS_START_DATE config var), or None to count everything.
+
+    Lets the business start its reports afresh from a clean day without
+    deleting the earlier sales, which stay in the sales history.
+    """
+    return _parse_date(getattr(settings, 'REPORTS_START_DATE', '') or '')
+
+
 LINE_COST = ExpressionWrapper(F('unit_cost') * F('quantity'),
                              output_field=DecimalField(max_digits=14, decimal_places=2))
 
@@ -258,7 +271,18 @@ def business_reports(request):
         sales = sales.filter(location=location)
         payments = payments.filter(sale__location=location)
 
-    # ---- headline: fixed windows ending today, today included ---------------
+    # Nothing before the reports start date counts on this page.
+    floor = reports_start()
+    if floor is not None:
+        items = items.filter(sale__created_at__date__gte=floor)
+        sales = sales.filter(created_at__date__gte=floor)
+        payments = payments.filter(created_at__date__gte=floor)
+
+    def clamp(first, last):
+        if floor is not None:
+            first, last = max(first, floor), max(last, floor)
+        return first, last
+
     def revenue_between(first, last):
         return items.filter(sale__created_at__date__range=[first, last]) \
                     .aggregate(s=Sum('total_price'))['s'] or Decimal('0.00')
@@ -266,9 +290,59 @@ def business_reports(request):
     last_7 = today - timedelta(days=6)
     last_30 = today - timedelta(days=29)
 
-    # ---- the selected period (defaults to the last 30 days) -----------------
-    start, end = _date_range(request, default_days=30)
+    # ---- the selected period (defaults to today) -----------------------------
+    start, end = clamp(*_date_range(request, default_days=1))
+    yesterday = today - timedelta(days=1)
+    presets, seen = [], set()
+    for label, first, last in (
+        ('Today', today, today),
+        ('Yesterday', yesterday, yesterday),
+        ('Last 7 days', last_7, today),
+        ('Last 30 days', last_30, today),
+        ('This month', today.replace(day=1), today),
+    ):
+        if floor is not None and last < floor:
+            continue                       # entirely before the start date
+        first, last = clamp(first, last)
+        if (first, last) in seen:
+            continue                       # same days as a button already shown
+        seen.add((first, last))
+        presets.append({'label': label, 'start': first.isoformat(), 'end': last.isoformat(),
+                        'active': (first, last) == (start, end)})
+
     period_items = items.filter(sale__created_at__date__range=[start, end])
+    period_sales = sales.filter(created_at__date__range=[start, end])
+    period_payments = payments.filter(created_at__date__range=[start, end])
+
+    # ---- the period at a glance -------------------------------------------------
+    _, all_totals = _products_sold(period_items)
+    sale_money = period_sales.aggregate(n=Count('id'), billed=Sum('total_amount'), paid=Sum('amount_paid'))
+    billed = sale_money['billed'] or Decimal('0.00')
+    paid = sale_money['paid'] or Decimal('0.00')
+    count = sale_money['n'] or 0
+    summary = {
+        'revenue': all_totals['revenue'],
+        'profit': all_totals['profit'],
+        'margin': (all_totals['profit'] / all_totals['revenue'] * 100) if all_totals['revenue'] else None,
+        'units': all_totals['units'],
+        'sales': count,
+        'average': (billed / count) if count else Decimal('0.00'),
+        'owed': billed - paid,
+        'collected': period_payments.aggregate(s=Sum('amount'))['s'] or Decimal('0.00'),
+    }
+
+    # Day by day, so a multi-day period can be read (and each day opened).
+    by_day = []
+    if start != end:
+        rows = {r['day']: r for r in period_items.annotate(day=TruncDate('sale__created_at'))
+                .values('day').annotate(revenue=Sum('total_price'), units=Sum('quantity'),
+                                        sales=Count('sale', distinct=True))}
+        d = end
+        while d >= start:
+            r = rows.get(d, {})
+            by_day.append({'day': d, 'revenue': r.get('revenue') or Decimal('0.00'),
+                           'units': r.get('units') or 0, 'sales': r.get('sales') or 0})
+            d -= timedelta(days=1)
 
     query = (request.GET.get('q') or '').strip()
     if query:
@@ -285,8 +359,7 @@ def business_reports(request):
     method_labels = dict(SalePayment.PaymentMethod.choices)
     payment_mix = [
         {'method': method_labels.get(r['payment_method'], r['payment_method']), 'total': r['total']}
-        for r in payments.filter(created_at__date__range=[start, end])
-        .values('payment_method').annotate(total=Sum('amount')).order_by('-total')
+        for r in period_payments.values('payment_method').annotate(total=Sum('amount')).order_by('-total')
     ]
 
     params = request.GET.copy()
@@ -297,17 +370,24 @@ def business_reports(request):
         'revenue_7d': revenue_between(last_7, today),
         'revenue_30d': revenue_between(last_30, today),
         'transactions_30d': sales.filter(created_at__date__range=[last_30, today]).count(),
+        'summary': summary,
+        'by_day': by_day,
+        'reports_start': floor,
         'page_obj': page_obj,
         'totals': totals,
         'payment_mix': payment_mix,
         'start_date': start.isoformat(),
         'end_date': end.isoformat(),
+        'start': start,
+        'end': end,
         'query': query,
         'sort': sort,
         'is_owner': is_owner,
         'locations': locations,
         'location': location,
         'querystring': params.urlencode(),
+        'presets': presets,
+        'period_is_today': start == end == today,
     }
     return render(request, 'dashboard/reports.html', context)
 
@@ -463,6 +543,8 @@ def daily_report(request):
         'prev_day': day - timedelta(days=1),
         'next_day': day + timedelta(days=1) if day < today else None,
         'is_today': day == today,
+        'reports_start': reports_start(),
+        'before_start': bool(reports_start() and day < reports_start()),
         'is_owner': is_owner,
         'locations': locations,
         'location': location,

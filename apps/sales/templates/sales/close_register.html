@@ -13,6 +13,13 @@
             </div>
 
             <div class="card-body">
+                {% if stale %}
+                <div class="alert alert-danger mb-4">
+                    <h6 class="alert-heading mb-1"><i class="ri ri-time-line me-1"></i> This shift started on {{ session.start_time|date:"l j F" }}</h6>
+                    <p class="mb-0">It was never closed, so its cash covers every day since then. Count the cash
+                        in the drawer now and close it. You can then open today's shift with today's float.</p>
+                </div>
+                {% endif %}
                 <div class="alert alert-warning mb-4">
                     <h6 class="alert-heading mb-1"><i class="ri-alert-line me-1"></i> Shift Summary</h6>
                     <p class="mb-0">You are about to close the register for <strong>{{ user.username }}</strong>.</p>

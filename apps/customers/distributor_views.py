@@ -22,7 +22,7 @@ from apps.core.decorators import MANAGEMENT, role_required
 from apps.core.search import search_queryset
 from apps.products.models import Product
 from apps.sales.models import RegisterSession
-from apps.sales.services import SaleError, record_sale, resolve_cart
+from apps.sales.services import SaleError, record_sale, resolve_cart, shift_is_stale, stale_shift_message
 from apps.sales.views import _location_stock_map
 
 from .forms import DistributorForm
@@ -200,7 +200,10 @@ def distributor_sell(request, pk):
 
     session = RegisterSession.objects.filter(
         user=request.user, location=location, status=RegisterSession.Status.OPEN
-    ).first()
+    ).order_by('start_time', 'id').first()
+    if shift_is_stale(session):
+        messages.warning(request, stale_shift_message(session))
+        return redirect('sales:close_register')
 
     try:
         resolved, qty_per_product = resolve_cart(

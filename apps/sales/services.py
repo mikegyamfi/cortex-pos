@@ -50,6 +50,23 @@ class SaleError(Exception):
     """A sale that must not be recorded. The message is safe to show the user."""
 
 
+def shift_is_stale(session):
+    """
+    True when an open shift was started on an earlier day.
+
+    A shift left open overnight piles several days' cash into one drawer, so
+    no single day can be counted. Money can't go through it until it is
+    closed and today's shift is opened.
+    """
+    return session is not None and timezone.localtime(session.start_time).date() < timezone.localdate()
+
+
+def stale_shift_message(session):
+    started = timezone.localtime(session.start_time)
+    return (f"Your shift from {started:%a %d %b} is still open. Count the cash in the drawer and "
+            f"close it, then open today's shift before taking any more money.")
+
+
 def parse_money(raw, what='Amount'):
     """
     Read a user-supplied amount as a 2dp Decimal, or raise SaleError.

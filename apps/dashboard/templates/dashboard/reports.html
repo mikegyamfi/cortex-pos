@@ -4,12 +4,13 @@
 {% block title %}Business Reports | Cortex POS{% endblock %}
 
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-4">
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
     <div>
         <h4 class="fw-bold mb-0">Business Reports</h4>
         <p class="text-muted mb-0">
             {% if location %}{{ location.name }}{% else %}All shops{% endif %}
-            &middot; revenue is net of refunds
+            &middot; {% if start == end %}{{ start|date:"l j F Y" }}{% else %}{{ start|date:"j M" }} &ndash; {{ end|date:"j M Y" }}{% endif %}
+            &middot; net of refunds
         </p>
     </div>
     <a href="{% url 'dashboard:daily_report' %}{% if is_owner and location %}?location={{ location.id }}{% endif %}" class="btn btn-primary">
@@ -17,45 +18,31 @@
     </a>
 </div>
 
-<!-- Headline revenue: fixed windows ending today (today included) -->
-<div class="row g-4 mb-4">
-    <div class="col-md-3 col-6">
-        <div class="card h-100"><div class="card-body">
-            <span class="text-muted d-block mb-1">Today</span>
-            <h4 class="mb-0 text-primary">{{ revenue_today|floatformat:2|intcomma }}</h4>
-        </div></div>
-    </div>
-    <div class="col-md-3 col-6">
-        <div class="card h-100"><div class="card-body">
-            <span class="text-muted d-block mb-1">Last 7 days</span>
-            <h4 class="mb-0">{{ revenue_7d|floatformat:2|intcomma }}</h4>
-        </div></div>
-    </div>
-    <div class="col-md-3 col-6">
-        <div class="card h-100"><div class="card-body">
-            <span class="text-muted d-block mb-1">Last 30 days</span>
-            <h4 class="mb-0">{{ revenue_30d|floatformat:2|intcomma }}</h4>
-        </div></div>
-    </div>
-    <div class="col-md-3 col-6">
-        <div class="card h-100"><div class="card-body">
-            <span class="text-muted d-block mb-1">Transactions (30 days)</span>
-            <h4 class="mb-0">{{ transactions_30d|intcomma }}</h4>
-        </div></div>
-    </div>
+{% if reports_start %}
+<div class="alert alert-info py-2 mb-3">
+    <i class="ri ri-information-line me-1"></i>
+    Reports count sales from <strong>{{ reports_start|date:"j F Y" }}</strong>. Earlier sales are still in
+    <a href="{% url 'sales:list' %}?date=">sales history</a> but are left out of these figures.
 </div>
+{% endif %}
 
-<!-- Period filter -->
+<!-- Period -->
 <div class="card mb-4">
-    <div class="card-body">
+    <div class="card-body pb-3">
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            {% for p in presets %}
+            <a href="?start_date={{ p.start }}&end_date={{ p.end }}{% if is_owner and location %}&location={{ location.id }}{% endif %}{% if query %}&q={{ query|urlencode }}{% endif %}&sort={{ sort }}"
+               class="btn btn-sm {% if p.active %}btn-primary{% else %}btn-outline-primary{% endif %}">{{ p.label }}</a>
+            {% endfor %}
+        </div>
         <form method="get" class="row g-3 align-items-end">
             <div class="col-6 col-md-2">
                 <label class="form-label small text-muted mb-1" for="start_date">From</label>
-                <input type="date" class="form-control" id="start_date" name="start_date" value="{{ start_date }}">
+                <input type="date" class="form-control" id="start_date" name="start_date" value="{{ start_date }}"{% if reports_start %} min="{{ reports_start|date:'Y-m-d' }}"{% endif %}>
             </div>
             <div class="col-6 col-md-2">
                 <label class="form-label small text-muted mb-1" for="end_date">To</label>
-                <input type="date" class="form-control" id="end_date" name="end_date" value="{{ end_date }}">
+                <input type="date" class="form-control" id="end_date" name="end_date" value="{{ end_date }}"{% if reports_start %} min="{{ reports_start|date:'Y-m-d' }}"{% endif %}>
             </div>
             {% if is_owner %}
             <div class="col-12 col-md-2">
@@ -82,10 +69,48 @@
                 </select>
             </div>
             <div class="col-4 col-md-1">
-                <button type="submit" class="btn btn-primary w-100"><i class="ri ri-search-line"></i></button>
+                <button type="submit" class="btn btn-primary w-100" aria-label="Apply"><i class="ri ri-search-line"></i></button>
             </div>
         </form>
     </div>
+</div>
+
+<!-- The period at a glance -->
+<div class="row g-4 mb-4">
+    <div class="col-xl-3 col-6">
+        <div class="card h-100"><div class="card-body">
+            <span class="text-muted d-block mb-1">Revenue</span>
+            <h4 class="mb-0 text-primary">{{ summary.revenue|floatformat:2|intcomma }}</h4>
+            <small class="text-muted">{{ summary.sales|intcomma }} sale{{ summary.sales|pluralize }} &middot; avg {{ summary.average|floatformat:2|intcomma }}</small>
+        </div></div>
+    </div>
+    <div class="col-xl-3 col-6">
+        <div class="card h-100"><div class="card-body">
+            <span class="text-muted d-block mb-1">Gross profit</span>
+            <h4 class="mb-0 {% if summary.profit < 0 %}text-danger{% else %}text-success{% endif %}">{{ summary.profit|floatformat:2|intcomma }}</h4>
+            <small class="text-muted">{% if summary.margin is not None %}{{ summary.margin|floatformat:1 }}% margin{% else %}&nbsp;{% endif %}</small>
+        </div></div>
+    </div>
+    <div class="col-xl-3 col-6">
+        <div class="card h-100"><div class="card-body">
+            <span class="text-muted d-block mb-1">Units sold</span>
+            <h4 class="mb-0">{{ summary.units|intcomma }}</h4>
+            <small class="text-muted">across {{ page_obj.paginator.count|intcomma }} product{{ page_obj.paginator.count|pluralize }}</small>
+        </div></div>
+    </div>
+    <div class="col-xl-3 col-6">
+        <div class="card h-100"><div class="card-body">
+            <span class="text-muted d-block mb-1">Money collected</span>
+            <h4 class="mb-0">{{ summary.collected|floatformat:2|intcomma }}</h4>
+            <small class="{% if summary.owed %}text-danger{% else %}text-muted{% endif %}">{{ summary.owed|floatformat:2|intcomma }} still owed on these sales</small>
+        </div></div>
+    </div>
+</div>
+
+<div class="d-flex flex-wrap gap-4 small text-muted mb-4 px-1">
+    <span>Today <strong class="text-body">{{ revenue_today|floatformat:2|intcomma }}</strong></span>
+    <span>Last 7 days <strong class="text-body">{{ revenue_7d|floatformat:2|intcomma }}</strong></span>
+    <span>Last 30 days <strong class="text-body">{{ revenue_30d|floatformat:2|intcomma }}</strong> ({{ transactions_30d|intcomma }} sale{{ transactions_30d|pluralize }})</span>
 </div>
 
 <div class="row g-4">
@@ -93,9 +118,9 @@
     <div class="col-xl-8">
         <div class="card h-100">
             <div class="card-header border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <h5 class="mb-0">Products Sold</h5>
+                <h5 class="mb-0">Products Sold{% if period_is_today %} Today{% endif %}</h5>
                 <small class="text-muted">
-                    {{ start_date }} to {{ end_date }} &middot;
+                    {% if start_date == end_date %}{{ start_date }}{% else %}{{ start_date }} to {{ end_date }}{% endif %} &middot;
                     {{ page_obj.paginator.count|intcomma }} product{{ page_obj.paginator.count|pluralize }}
                 </small>
             </div>
@@ -162,8 +187,28 @@
         </div>
     </div>
 
-    <!-- Payment mix + shortcuts -->
+    <!-- Day by day + payment mix + shortcuts -->
     <div class="col-xl-4">
+        {% if by_day %}
+        <div class="card mb-4">
+            <div class="card-header border-bottom"><h5 class="mb-0">Day by day</h5></div>
+            <div class="table-responsive" style="max-height: 360px; overflow-y: auto;">
+                <table class="table table-sm table-hover mb-0" data-no-search>
+                    <thead class="table-light"><tr><th>Day</th><th class="text-end">Sales</th><th class="text-end">Units</th><th class="text-end">Revenue</th></tr></thead>
+                    <tbody>
+                        {% for d in by_day %}
+                        <tr>
+                            <td><a href="{% url 'dashboard:daily_report' %}?date={{ d.day|date:'Y-m-d' }}{% if is_owner and location %}&location={{ location.id }}{% endif %}">{{ d.day|date:"D j M" }}</a></td>
+                            <td class="text-end {% if not d.sales %}text-muted{% endif %}">{{ d.sales }}</td>
+                            <td class="text-end {% if not d.units %}text-muted{% endif %}">{{ d.units|intcomma }}</td>
+                            <td class="text-end fw-semibold {% if not d.revenue %}text-muted{% endif %}">{{ d.revenue|floatformat:2|intcomma }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
         <div class="card mb-4">
             <div class="card-header border-bottom">
                 <h5 class="mb-0">Payment Mix</h5>

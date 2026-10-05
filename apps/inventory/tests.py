@@ -108,3 +108,31 @@ class ReceiveStockFlowTests(TestCase):
         self.assertEqual(item.quantity_sent, 15)
         self.assertEqual(self._shop_qty(), 15)
         self.assertEqual(self._wh_qty(), 35)
+
+
+class ProductHistoryCommandTests(ReceiveStockFlowTests):
+    """product_history explains where stock went, including the hidden pull."""
+
+    def test_stock_pulled_by_another_shops_receipt_shows_on_the_source(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        self.client.post(reverse('inventory:receive_stock'), {
+            'product': self.shop_product.id, 'quantity': 20,
+            'cost_price': '', 'supplier': '', 'batch_number': '',
+            'expiry_date': '', 'manufactured_date': '',
+            'source_location': self.warehouse.id,
+        })
+        out = StringIO()
+        call_command('product_history', 'BLT-1', '--location', 'Main Warehouse', stdout=out)
+        text = out.getvalue()
+        self.assertIn('On hand now: 30', text)
+        self.assertIn('TRANSFER OUT', text)
+        self.assertIn('-20', text)
+        self.assertIn('to Test Shop', text)
+
+        out = StringIO()
+        call_command('product_history', 'bolt', '--location', 'Test Shop', stdout=out)
+        self.assertIn('TRANSFER IN', out.getvalue())
+        self.assertIn('+20', out.getvalue())
+        out.getvalue().encode('ascii')
