@@ -392,10 +392,14 @@ def check_stock(report, location=None):
 
 # ---------------------------------------------------------------- entry point
 
-def reconcile(*, fix=False, include_closed=False, location=None, since=None):
+def reconcile(*, fix=False, include_closed=False, location=None, since=None, until=None,
+              include_customers=True):
     """
     Run every check. With fix=True, repair what can be repaired from the rows.
     The caller wraps this in a transaction.
+
+    since/until (dates, inclusive) narrow it to sales made, and shifts open, in
+    that window — e.g. one day for the Daily Report.
     """
     report = Report()
     sales = Sale.objects.all()
@@ -406,6 +410,9 @@ def reconcile(*, fix=False, include_closed=False, location=None, since=None):
     if since is not None:
         sales = sales.filter(created_at__date__gte=since)
         sessions = sessions.filter(Q(end_time__isnull=True) | Q(end_time__date__gte=since))
+    if until is not None:
+        sales = sales.filter(created_at__date__lte=until)
+        sessions = sessions.filter(start_time__date__lte=until)
 
     check_line_totals(report, sales, fix)
     check_sales(report, sales, fix)
@@ -424,8 +431,20 @@ def reconcile(*, fix=False, include_closed=False, location=None, since=None):
             .filter(Q(end_time__isnull=True) | Q(end_time__gte=pay.created_at))
             .values_list('id', flat=True)
         )
-    check_drawers(report, sessions, fix, include_closed, unplaceable_sessions)
+    # A drawer's totals cover its whole shift, so with a date window only
+    # shifts that lie entirely inside it can be compared with the window's
+    # payments (a shift left open across days is reported elsewhere).
+    drawer_sessions = sessions
+    if since is not None:
+        drawer_sessions = drawer_sessions.filter(start_time__date__gte=since)
+    if until is not None:
+        still_open_ok = until >= timezone.localdate()
+        drawer_sessions = drawer_sessions.filter(
+            Q(end_time__date__lte=until) | (Q(end_time__isnull=True) if still_open_ok else Q(pk__in=[]))
+        )
+    check_drawers(report, drawer_sessions, fix, include_closed, unplaceable_sessions)
 
-    check_customers(report, fix, location)
+    if include_customers:
+        check_customers(report, fix, location)
     check_stock(report, location)
     return report

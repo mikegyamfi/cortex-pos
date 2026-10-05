@@ -4,12 +4,20 @@
 {% block title %}Business Reports | Cortex POS{% endblock %}
 
 {% block content %}
-<div class="mb-4">
-    <h4 class="fw-bold mb-0">Business Reports</h4>
-    <p class="text-muted mb-0">Headline numbers and detailed report shortcuts</p>
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-4">
+    <div>
+        <h4 class="fw-bold mb-0">Business Reports</h4>
+        <p class="text-muted mb-0">
+            {% if location %}{{ location.name }}{% else %}All shops{% endif %}
+            &middot; revenue is net of refunds
+        </p>
+    </div>
+    <a href="{% url 'dashboard:daily_report' %}{% if is_owner and location %}?location={{ location.id }}{% endif %}" class="btn btn-primary">
+        <i class="ri ri-calendar-check-line me-1"></i> Today's report
+    </a>
 </div>
 
-<!-- Headline revenue -->
+<!-- Headline revenue: fixed windows ending today (today included) -->
 <div class="row g-4 mb-4">
     <div class="col-md-3 col-6">
         <div class="card h-100"><div class="card-body">
@@ -31,48 +39,144 @@
     </div>
     <div class="col-md-3 col-6">
         <div class="card h-100"><div class="card-body">
-            <span class="text-muted d-block mb-1">Transactions (30d)</span>
+            <span class="text-muted d-block mb-1">Transactions (30 days)</span>
             <h4 class="mb-0">{{ transactions_30d|intcomma }}</h4>
         </div></div>
     </div>
 </div>
 
+<!-- Period filter -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-6 col-md-2">
+                <label class="form-label small text-muted mb-1" for="start_date">From</label>
+                <input type="date" class="form-control" id="start_date" name="start_date" value="{{ start_date }}">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small text-muted mb-1" for="end_date">To</label>
+                <input type="date" class="form-control" id="end_date" name="end_date" value="{{ end_date }}">
+            </div>
+            {% if is_owner %}
+            <div class="col-12 col-md-2">
+                <label class="form-label small text-muted mb-1" for="location">Shop</label>
+                <select class="form-select" id="location" name="location">
+                    <option value="">All shops</option>
+                    {% for loc in locations %}
+                    <option value="{{ loc.id }}" {% if location and location.id == loc.id %}selected{% endif %}>{{ loc.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-12 col-md-3">
+                <label class="form-label small text-muted mb-1" for="q">Product</label>
+                <input type="text" class="form-control" id="q" name="q" value="{{ query }}" placeholder="Name or SKU">
+            </div>
+            <div class="col-8 col-md-2">
+                <label class="form-label small text-muted mb-1" for="sort">Sort by</label>
+                <select class="form-select" id="sort" name="sort">
+                    <option value="revenue" {% if sort == 'revenue' %}selected{% endif %}>Revenue</option>
+                    <option value="units" {% if sort == 'units' %}selected{% endif %}>Units sold</option>
+                    <option value="profit" {% if sort == 'profit' %}selected{% endif %}>Profit</option>
+                    <option value="name" {% if sort == 'name' %}selected{% endif %}>Name</option>
+                </select>
+            </div>
+            <div class="col-4 col-md-1">
+                <button type="submit" class="btn btn-primary w-100"><i class="ri ri-search-line"></i></button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="row g-4">
-    <!-- Top products -->
-    <div class="col-lg-7">
+    <!-- Every product sold in the period -->
+    <div class="col-xl-8">
         <div class="card h-100">
-            <div class="card-header border-bottom"><h5 class="mb-0">Top Products (30 days)</h5></div>
+            <div class="card-header border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <h5 class="mb-0">Products Sold</h5>
+                <small class="text-muted">
+                    {{ start_date }} to {{ end_date }} &middot;
+                    {{ page_obj.paginator.count|intcomma }} product{{ page_obj.paginator.count|pluralize }}
+                </small>
+            </div>
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
-                    <thead><tr><th>Product</th><th class="text-end">Units</th><th class="text-end">Revenue</th></tr></thead>
-                    <tbody>
-                        {% for p in top_products %}
+                    <thead>
                         <tr>
-                            <td class="fw-semibold">{{ p.product__name }}</td>
+                            <th>Product</th>
+                            {% if is_owner and not location %}<th>Shop</th>{% endif %}
+                            <th class="text-end">Units</th>
+                            <th class="text-end">Sales</th>
+                            <th class="text-end">Revenue</th>
+                            <th class="text-end">Profit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in page_obj %}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">{{ p.product__name }}</div>
+                                <small class="text-muted">{{ p.product__sku }}</small>
+                            </td>
+                            {% if is_owner and not location %}<td>{{ p.product__location__name|default:"—" }}</td>{% endif %}
                             <td class="text-end">{{ p.units|intcomma }}</td>
+                            <td class="text-end text-muted">{{ p.sale_count|intcomma }}</td>
                             <td class="text-end fw-bold">{{ p.revenue|floatformat:2|intcomma }}</td>
+                            <td class="text-end {% if p.profit < 0 %}text-danger{% else %}text-success{% endif %}">{{ p.profit|floatformat:2|intcomma }}</td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="3" class="text-center text-muted py-4">No sales in the last 30 days.</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted py-4">No products sold in this period.</td></tr>
                         {% endfor %}
                     </tbody>
+                    {% if page_obj.paginator.count %}
+                    <tfoot class="table-light">
+                        <tr class="fw-bold">
+                            <td>Total{% if page_obj.has_other_pages %} (all pages){% endif %}</td>
+                            {% if is_owner and not location %}<td></td>{% endif %}
+                            <td class="text-end">{{ totals.units|intcomma }}</td>
+                            <td></td>
+                            <td class="text-end">{{ totals.revenue|floatformat:2|intcomma }}</td>
+                            <td class="text-end">{{ totals.profit|floatformat:2|intcomma }}</td>
+                        </tr>
+                    </tfoot>
+                    {% endif %}
                 </table>
             </div>
+            {% if page_obj.has_other_pages %}
+            <div class="card-footer d-flex justify-content-center">
+                <nav aria-label="Products sold pages">
+                    <ul class="pagination mb-0">
+                        {% if page_obj.has_previous %}
+                        <li class="page-item first"><a class="page-link" href="?{{ querystring }}&page=1" aria-label="First"><i class="ri ri-skip-back-mini-line"></i></a></li>
+                        <li class="page-item prev"><a class="page-link" href="?{{ querystring }}&page={{ page_obj.previous_page_number }}" aria-label="Previous"><i class="ri ri-arrow-left-s-line"></i></a></li>
+                        {% endif %}
+                        <li class="page-item active"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                        {% if page_obj.has_next %}
+                        <li class="page-item next"><a class="page-link" href="?{{ querystring }}&page={{ page_obj.next_page_number }}" aria-label="Next"><i class="ri ri-arrow-right-s-line"></i></a></li>
+                        <li class="page-item last"><a class="page-link" href="?{{ querystring }}&page={{ page_obj.paginator.num_pages }}" aria-label="Last"><i class="ri ri-skip-forward-mini-line"></i></a></li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
         </div>
     </div>
 
     <!-- Payment mix + shortcuts -->
-    <div class="col-lg-5">
+    <div class="col-xl-4">
         <div class="card mb-4">
-            <div class="card-header border-bottom"><h5 class="mb-0">Payment Mix (30 days)</h5></div>
+            <div class="card-header border-bottom">
+                <h5 class="mb-0">Payment Mix</h5>
+                <small class="text-muted">{{ start_date }} to {{ end_date }}, after change and refunds</small>
+            </div>
             <div class="card-body">
                 {% for pm in payment_mix %}
                 <div class="d-flex justify-content-between mb-2">
-                    <span class="text-muted">{{ pm.payment_method }}</span>
+                    <span class="text-muted">{{ pm.method }}</span>
                     <span class="fw-bold">{{ pm.total|floatformat:2|intcomma }}</span>
                 </div>
                 {% empty %}
-                <p class="text-muted mb-0">No payments yet.</p>
+                <p class="text-muted mb-0">No payments in this period.</p>
                 {% endfor %}
             </div>
         </div>
@@ -80,6 +184,7 @@
         <div class="card">
             <div class="card-header border-bottom"><h5 class="mb-0">Detailed Reports</h5></div>
             <div class="list-group list-group-flush">
+                <a href="{% url 'dashboard:daily_report' %}{% if is_owner and location %}?location={{ location.id }}{% endif %}" class="list-group-item list-group-item-action d-flex align-items-center fw-semibold"><i class="ri ri-calendar-check-line me-2 text-primary"></i> Daily Report (what happened today)</a>
                 <a href="{% url 'finance:profit_loss' %}" class="list-group-item list-group-item-action d-flex align-items-center"><i class="ri ri-line-chart-line me-2 text-primary"></i> Profit & Loss</a>
                 <a href="{% url 'finance:tax_report' %}" class="list-group-item list-group-item-action d-flex align-items-center"><i class="ri ri-percent-line me-2 text-primary"></i> Tax Report</a>
                 <a href="{% url 'finance:targets' %}" class="list-group-item list-group-item-action d-flex align-items-center"><i class="ri ri-flag-line me-2 text-primary"></i> Revenue Targets</a>

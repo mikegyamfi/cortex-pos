@@ -13,5 +13,6 @@ urlpatterns = [
 
     # Intelligence
     path('reports/', views.business_reports, name='reports'),
+    path('reports/day/', views.daily_report, name='daily_report'),
     path('staff-performance/', views.staff_performance, name='staff_performance'),
 ]
