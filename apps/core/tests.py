@@ -48,6 +48,7 @@ class SearchAssetsOnListPagesTests(TestCase):
                 html = res.content.decode()
                 self.assertIn('table-search.js', html)
                 self.assertIn('searchable-select.js', html)
+                self.assertIn('live-search.js', html)
 
     def test_detail_pages_opt_their_tables_out_of_list_search(self):
         """Receipts and audit tables are not lists — they carry data-no-search."""
@@ -62,3 +63,59 @@ class SearchAssetsOnListPagesTests(TestCase):
                                    status=Sale.Status.COMPLETED)
         html = self.client.get(reverse('sales:detail', args=[sale.pk])).content.decode()
         self.assertIn('data-no-search', html)
+
+
+class ForgivingSearchTests(TestCase):
+    """apps.core.search: word-by-word, any-order, typo-tolerant matching."""
+
+    def setUp(self):
+        from apps.core.search import search_queryset
+        self.search = search_queryset
+        self.loc = Location.objects.create(name="Search Shop", address="a")
+        for i, name in enumerate(["Filter - Oil 5W30", "Air Filter K2", "Brake Pad Set", "Engine Oil 1L"]):
+            Product.objects.create(name=name, slug=f"p{i}", sku=f"SKU-{i}", location=self.loc,
+                                   cost_price=Decimal('1'), selling_price=Decimal('2'))
+        Customer.objects.create(first_name="Ama", last_name="Mensah", phone_number="0244000111",
+                                location=self.loc)
+        Customer.objects.create(first_name="Kofi", last_name="Boateng", phone_number="0201234567",
+                                location=self.loc)
+
+    def names(self, query):
+        qs = self.search(Product.objects.order_by('name'), query, ['name', 'sku', 'barcode'])
+        return list(qs.values_list('name', flat=True))
+
+    def test_words_match_in_any_order(self):
+        self.assertEqual(self.names("oil filter"), ["Filter - Oil 5W30"])
+
+    def test_partial_words_match(self):
+        self.assertEqual(self.names("filt"), ["Air Filter K2", "Filter - Oil 5W30"])
+
+    def test_words_can_come_from_different_fields(self):
+        self.assertEqual(self.names("brake sku-2"), ["Brake Pad Set"])
+
+    def test_typos_are_tolerated_when_nothing_matches_exactly(self):
+        self.assertEqual(self.names("brak pda"), ["Brake Pad Set"])
+        self.assertEqual(self.names("enigne"), ["Engine Oil 1L"])
+
+    def test_unrelated_query_finds_nothing(self):
+        self.assertEqual(self.names("windscreen"), [])
+
+    def test_blank_query_returns_everything(self):
+        self.assertEqual(len(self.names("  ")), 4)
+
+    def test_full_name_across_first_and_last_name(self):
+        qs = self.search(Customer.objects.all(), "ama mensah", ['first_name', 'last_name', 'phone_number'])
+        self.assertEqual([c.first_name for c in qs], ["Ama"])
+        qs = self.search(Customer.objects.all(), "mensha", ['first_name', 'last_name', 'phone_number'])
+        self.assertEqual([c.first_name for c in qs], ["Ama"])
+
+    def test_list_pages_use_it(self):
+        owner = User.objects.create_user(username="searchowner", password="pw", role="OWNER",
+                                         assigned_location=self.loc)
+        self.client.force_login(owner)
+        html = self.client.get(reverse('products:product_list'), {'q': 'oil filter'}).content.decode()
+        self.assertIn("Filter - Oil 5W30", html)
+        self.assertNotIn("Brake Pad Set", html)
+        html = self.client.get(reverse('customers:list'), {'q': 'kofi boateng'}).content.decode()
+        self.assertIn("0201234567", html)
+        self.assertNotIn("0244000111", html)

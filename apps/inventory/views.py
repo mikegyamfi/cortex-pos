@@ -12,6 +12,7 @@ from decimal import Decimal
 from .models import StockBatch, StockTransfer, StockTransferItem, StockAdjustment
 from .forms import StockReceiveForm, StockTransferForm, StockTransferItemForm, StockAdjustmentForm
 from apps.core.decorators import role_required, INVENTORY_STAFF
+from apps.core.search import search_queryset, text_matches
 from apps.location.models import Location
 from apps.products.models import Product
 from ..sales.models import SaleItem
@@ -80,18 +81,12 @@ def inventory_dashboard(request):
 
     # 3. Search — narrows the table only.
     if query:
-        batches = batches.filter(
-            Q(product__name__icontains=query)
-            | Q(product__sku__icontains=query)
-            | Q(product__barcode__icontains=query)
-            | Q(batch_number__icontains=query)
-        )
-        needle = query.lower()
+        batches = search_queryset(batches, query, [
+            'product__name', 'product__sku', 'product__barcode', 'batch_number',
+        ])
 
         def matches(product):
-            return (needle in product.name.lower()
-                    or needle in (product.sku or '').lower()
-                    or needle in (product.barcode or '').lower())
+            return text_matches(query, product.name, product.sku, product.barcode, fuzzy=True)
 
         out_of_stock = [p for p in out_of_stock if matches(p)]
         low_stock = [p for p in low_stock if matches(p)]

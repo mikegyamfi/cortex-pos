@@ -141,3 +141,14 @@
     max-width: 22rem;
     flex: 1 1 14rem;
 }
+
+/* live-search.js: a hint that results are refreshing */
+form.live-search-busy input[name="q"] {
+    background-image: linear-gradient(90deg, transparent, rgba(105, 108, 255, .12), transparent);
+    background-size: 200% 100%;
+    animation: live-search-pulse 1s linear infinite;
+}
+@keyframes live-search-pulse {
+    from { background-position: 100% 0; }
+    to { background-position: -100% 0; }
+}

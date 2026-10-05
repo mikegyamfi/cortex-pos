@@ -19,6 +19,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from apps.core.decorators import MANAGEMENT, role_required
+from apps.core.search import search_queryset
 from apps.products.models import Product
 from apps.sales.models import RegisterSession
 from apps.sales.services import SaleError, record_sale, resolve_cart
@@ -43,16 +44,10 @@ def distributor_list(request):
     distributors = _distributor_scope(request.user).select_related('location')
 
     if query:
-        distributors = distributors.filter(
-            Q(company_name__icontains=query)
-            | Q(contact_person__icontains=query)
-            | Q(first_name__icontains=query)
-            | Q(last_name__icontains=query)
-            | Q(phone_number__icontains=query)
-            | Q(backup_phone__icontains=query)
-            | Q(email__icontains=query)
-            | Q(address__icontains=query)
-        )
+        distributors = search_queryset(distributors, query, [
+            'company_name', 'contact_person', 'first_name', 'last_name',
+            'phone_number', 'backup_phone', 'email', 'address', 'location__name',
+        ])
 
     distributors = distributors.annotate(
         purchase_count=Count('purchases', distinct=True),

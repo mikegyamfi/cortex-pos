@@ -6,6 +6,7 @@ from django.db.models import Q, Sum, Count
 from django.core.paginator import Paginator
 
 from .models import Customer
+from apps.core.search import search_queryset
 from .forms import CustomerForm
 
 
@@ -24,12 +25,9 @@ def customer_list(request):
     customers = customers.order_by('-last_visit_date')
 
     if query:
-        customers = customers.filter(
-            Q(first_name__icontains=query) |
-            Q(last_name__icontains=query) |
-            Q(phone_number__icontains=query) |
-            Q(email__icontains=query)
-        )
+        customers = search_queryset(customers, query, [
+            'first_name', 'last_name', 'phone_number', 'email',
+        ])
 
     paginator = Paginator(customers, 20)
     page_number = request.GET.get('page')
@@ -107,13 +105,10 @@ def api_search_customers(request):
         return JsonResponse({'results': []})
 
     # Scoped to the cashier's shop — search never returns another shop's customers.
-    customers = Customer.objects.filter(
-        Q(first_name__icontains=query) |
-        Q(last_name__icontains=query) |
-        Q(phone_number__icontains=query)
-    )
+    customers = Customer.objects.all()
     if request.user.role != 'OWNER':
         customers = customers.filter(location=request.user.assigned_location)
+    customers = search_queryset(customers, query, ['first_name', 'last_name', 'phone_number'])
     customers = customers[:10]  # Limit to top 10 results for performance
 
     results = []

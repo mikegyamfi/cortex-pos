@@ -109,6 +109,9 @@
     <!-- All-column search box on every list table -->
     <script src="{% static 'js/table-search.js' %}"></script>
 
+    <!-- Search-as-you-type (debounced) on list pages' server-side search -->
+    <script src="{% static 'js/live-search.js' %}"></script>
+
     {% block extra_js %}{% endblock %}
   </body>
 </html>

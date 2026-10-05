@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST
 from .models import Product, Category, Brand
 from .forms import ProductForm, ProductImageForm, CategoryForm, BrandForm
 from ..core.decorators import role_required, INVENTORY_STAFF, MANAGEMENT
+from ..core.search import search_queryset
 from ..inventory.models import StockBatch
 from ..location.models import Location
 
@@ -37,11 +38,7 @@ def product_list(request):
     location_id = request.GET.get('location')
 
     if query:
-        products = products.filter(
-            Q(name__icontains=query) |
-            Q(sku__icontains=query) |
-            Q(barcode__icontains=query)
-        )
+        products = search_queryset(products, query, ['name', 'sku', 'barcode'])
 
     if category_id:
         products = products.filter(category_id=category_id)

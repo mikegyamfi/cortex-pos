@@ -328,25 +328,26 @@
         const fullLinkEl = document.getElementById('batchQuickviewFullLink');
         const loadingHtml = bodyEl.innerHTML;
 
-        document.querySelectorAll('.batch-quickview-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const id = btn.dataset.batchId;
-                const label = btn.dataset.batchLabel || 'Stock Batch';
-                titleEl.textContent = label;
-                fullLinkEl.href = `/inventory/batch/${id}/`;
-                bodyEl.innerHTML = loadingHtml;
-                modal.show();
-                try {
-                    const res = await fetch(`/inventory/batch/${id}/?partial=1`, {
-                        credentials: 'same-origin',
-                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                    });
-                    if (!res.ok) throw new Error(res.statusText);
-                    bodyEl.innerHTML = await res.text();
-                } catch (err) {
-                    bodyEl.innerHTML = `<div class="alert alert-danger mb-0">Failed to load batch details: ${err.message}</div>`;
-                }
-            });
+        // Delegated, so buttons in rows swapped in by live search work too.
+        document.addEventListener('click', async (event) => {
+            const btn = event.target.closest('.batch-quickview-btn');
+            if (!btn) return;
+            const id = btn.dataset.batchId;
+            const label = btn.dataset.batchLabel || 'Stock Batch';
+            titleEl.textContent = label;
+            fullLinkEl.href = `/inventory/batch/${id}/`;
+            bodyEl.innerHTML = loadingHtml;
+            modal.show();
+            try {
+                const res = await fetch(`/inventory/batch/${id}/?partial=1`, {
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                if (!res.ok) throw new Error(res.statusText);
+                bodyEl.innerHTML = await res.text();
+            } catch (err) {
+                bodyEl.innerHTML = `<div class="alert alert-danger mb-0">Failed to load batch details: ${err.message}</div>`;
+            }
         });
     })();
 </script>
