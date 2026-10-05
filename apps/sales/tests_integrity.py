@@ -848,6 +848,45 @@ class ReconcileTests(MoneyTestBase):
         self.assertEqual(self.checks(reconcile(location=self.other_loc)), set())
         self.assertIn('sale-total', self.checks(reconcile(location=self.loc)))
 
+    def test_clear_debtors_dry_run_changes_nothing(self):
+        self.sell(3, payments=[{'method': 'CASH', 'amount': '10'}], customer_id=self.customer.id)
+        out = StringIO()
+        call_command('clear_debtors', stdout=out)
+        self.assertIn('DRY RUN', out.getvalue())
+        self.assertEqual(Sale.objects.count(), 1)
+        self.assertEqual(self.stock(), 8)
+
+    def test_clear_debtors_deletes_debts_and_undoes_them(self):
+        paid = self.sell(2)                                                     # fully paid: kept
+        # A part-refunded debt: 4 units over two batches (lines 1 + 3); the 1 is refunded below.
+        debt = Sale.objects.get(pk=self.sell(4, payments=[{'method': 'MOMO', 'amount': '5'}],
+                                             customer_id=self.customer.id).json()['sale_id'])
+        self.assertEqual(sorted(i.quantity for i in debt.items.all()), [1, 3])
+        self.sell(3, payments=[{'method': 'CASH', 'amount': '10'}], customer_id=self.customer.id)
+        self.sell(1, payments=[], customer_id=self.customer.id)
+        self.client.force_login(self.manager)
+        self.open_session(self.manager, "0")
+        one = debt.items.order_by('quantity').first()
+        self.client.post(reverse('sales:refund', args=[debt.id]),
+                         {'refund_items': [one.id], 'refund_method': 'CASH', 'reason': 'x'})
+        self.assertEqual(self.stock(), 11 - 2 - 3 - 1 - 4 + one.quantity)
+
+        out = StringIO()
+        call_command('clear_debtors', '--commit', stdout=out)
+        out.getvalue().encode('ascii')
+
+        self.assertEqual(list(Sale.objects.values_list('pk', flat=True)), [paid.json()['sale_id']])
+        self.assertEqual(self.stock(), 11 - 2)                       # only the paid sale's units are gone
+        self.session.refresh_from_db()
+        self.assertEqual((self.session.total_cash_sales, self.session.total_momo_sales),
+                         (D("20.00"), D("0.00")))                    # just the paid sale
+        self.customer.refresh_from_db()
+        self.assertEqual((self.customer.total_spent, self.customer.total_visits), (D("0.00"), 0))
+        self.assert_tallies()
+        out = StringIO()
+        call_command('clear_debtors', stdout=out)
+        self.assertIn('No debtors', out.getvalue())
+
     def test_command_dry_run_then_commit(self):
         self.sell(2)
         Sale.objects.update(total_amount=D("1.00"))
