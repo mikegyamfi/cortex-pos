@@ -21,3 +21,9 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 # Set Dummy keys for SMS/External APIs during local dev
 SMS_API_KEY = "local_dev_dummy_key"
 
+
+# The test suite creates several users per test; the production hasher makes
+# that take seconds each. Tests only need *a* hasher, not a slow one.
+import sys  # noqa: E402
+if len(sys.argv) > 1 and sys.argv[1] == "test":
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]

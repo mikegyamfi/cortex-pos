@@ -246,10 +246,14 @@ class ArrearsTests(POSTestBase):
             data={"refund_items": [one_item.id], "refund_method": "CASH", "reason": "Return"},
         )
         sale.refresh_from_db()
-        # total 20 -> 10, paid 12 -> 2; they still owe 8 for the kept item.
+        # Bill 20 -> 10. They had paid 12 for goods now worth 10, so the return
+        # first cancels the debt and only the 2 over-paid goes back. (It used
+        # to pay out the full 10 while they still owed 8 — cash the shop never
+        # received leaving the drawer.)
         self.assertEqual(sale.total_amount, Decimal("10.00"))
-        self.assertEqual(sale.amount_paid, Decimal("2.00"))
-        self.assertEqual(sale.balance_remaining, Decimal("8.00"))
+        self.assertEqual(sale.amount_paid, Decimal("10.00"))
+        self.assertEqual(sale.balance_remaining, Decimal("0.00"))
+        self.assertTrue(SalePayment.objects.filter(sale=sale, amount=Decimal("-2.00")).exists())
 
     def test_salesperson_can_view_arrears(self):
         self.client.force_login(self.salesperson)

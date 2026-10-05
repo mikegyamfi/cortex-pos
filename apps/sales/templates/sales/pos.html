@@ -109,6 +109,8 @@
     .qty-btn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #696cff; background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.08); font-size: .95rem; }
     .qty-btn:active { background: #e7e7e7; transform: scale(.95); }
     .qty-val { width: 28px; text-align: center; font-weight: 700; font-size: .85rem; }
+    .qty-input { width: 40px; border: 0; background: transparent; padding: 0; outline: none; border-radius: 4px; }
+    .qty-input:focus { background: #fff; box-shadow: 0 0 0 2px rgba(105,108,255,.35); }
     .ci-total { font-weight: 800; font-size: .85rem; min-width: 58px; text-align: right; color: #384551; }
     .ci-remove { color: #d9dee3; cursor: pointer; font-size: 1.05rem; transition: .15s; }
     .ci-remove:hover { color: #ff3e1d; }
@@ -421,6 +423,20 @@
     let selectedCustomerId = null;
     let cart = [];
     let cartTotal = 0.00;
+    // Idempotency key for the current checkout. Kept across retries of the
+    // SAME cart (so a timed-out request that actually went through is not
+    // sold twice) and thrown away whenever the cart changes.
+    let checkoutRef = null;
+    let saleInFlight = false;
+
+    // Money is added up in whole pesewas/cents: 0.1 + 0.2 is not 0.3 in floats.
+    const toCents = v => Math.round((parseFloat(v) || 0) * 100);
+    const fromCents = c => c / 100;
+    const fmtMoney = v => Number(v).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    function newRef() {
+        if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+        return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+    }
     let viewMode = localStorage.getItem('posViewMode') || 'grid';
 
     const SEARCH_URL = "{% url 'sales:product_search' %}";
@@ -510,6 +526,11 @@
 
     // Scanner / Enter: auto-add an exact barcode or SKU match, else show results.
     async function handleEnter(term) {
+        // Take the code out of the box NOW, before the lookup. Scanners that
+        // send CR+LF, or a second Enter press, used to re-submit the same code
+        // while the first lookup was still in flight and add the item twice.
+        clearTimeout(searchTimer);
+        document.getElementById('product-search').value = '';
         if (!term) return;
         try {
             const res = await fetch(`${SEARCH_URL}?q=${encodeURIComponent(term)}`);
@@ -699,18 +720,22 @@
             createView.classList.add('d-none'); searchView.classList.remove('d-none');
         }
     }
+    let customerSearchTimer = null;
     document.getElementById('customer-search-input').addEventListener('keyup', function (e) {
         const query = e.target.value.trim();
         const list = document.getElementById('customer-results-list');
         const guestHtml = `<button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" onclick="selectCustomer('Guest Customer', null)"><div><span class="fw-bold">Guest Customer</span><br><small class="text-muted">Walk-in</small></div><i class="ri ri-user-3-line"></i></button>`;
+        clearTimeout(customerSearchTimer);
         if (query.length < 2) { list.innerHTML = guestHtml; return; }
-        fetch(`/customers/api/search/?q=${encodeURIComponent(query)}`).then(res => res.json()).then(data => {
+        // Debounced: one request per pause in typing, not one per keystroke.
+        customerSearchTimer = setTimeout(() => fetch(`/customers/api/search/?q=${encodeURIComponent(query)}`).then(res => res.json()).then(data => {
+            if (document.getElementById('customer-search-input').value.trim() !== query) return;
             let html = guestHtml;
             data.results.forEach(c => {
                 html += `<button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" onclick="selectCustomer('${escapeHtml(c.name).replace(/'/g, "\\'")}', ${c.id})"><div><span class="fw-bold">${escapeHtml(c.name)}</span><br><small class="text-muted">${escapeHtml(c.phone || '')}</small></div><span class="badge bg-label-success">Select</span></button>`;
             });
             list.innerHTML = html;
-        });
+        }), 250);
     });
     async function createCustomer() {
         const phone = document.getElementById('new-cust-phone').value;
@@ -787,6 +812,29 @@
 
     function removeItem(index) { cart.splice(index, 1); renderCart(); }
 
+    // Type a quantity straight in (e.g. 8) instead of tapping + seven times.
+    function setQty(index, raw) {
+        const item = cart[index];
+        if (!item) return;
+        const str = String(raw).trim();
+        if (!/^\d+$/.test(str)) {
+            Swal.fire({ icon: 'warning', title: 'Whole numbers only', text: 'Enter the quantity as a whole number, e.g. 8.', confirmButtonColor: '#696cff' });
+            renderCart();
+            return;
+        }
+        const qty = parseInt(str, 10);
+        if (qty === 0) { removeItem(index); return; }
+        const otherLines = cart.filter((i, n) => n !== index && i.id === item.id).reduce((s, i) => s + i.qty, 0);
+        const stock = (item.stock === undefined || item.stock === null) ? Infinity : item.stock;
+        if (otherLines + qty > stock) {
+            Swal.fire({ icon: 'warning', title: 'Not enough stock', text: `Only ${stock} of ${item.name} on hand.`, confirmButtonColor: '#696cff' });
+            renderCart();
+            return;
+        }
+        item.qty = qty;
+        renderCart();
+    }
+
     // Click a line's tag to cycle it through the price lists that product has.
     function toggleItemPrice(index) {
         const item = cart[index];
@@ -808,6 +856,9 @@
     }
 
     function renderCart() {
+        // Every path that changes the cart ends here, so this is where a
+        // pending checkout key is invalidated.
+        checkoutRef = null;
         const container = document.getElementById('cart-container');
         const countBadge = document.getElementById('cart-count-badge');
         if (cart.length === 0) {
@@ -819,10 +870,11 @@
             return;
         }
         let html = '';
-        let total = 0, units = 0;
+        let totalCents = 0, units = 0;
         cart.forEach((item, index) => {
-            const itemTotal = item.price * item.qty;
-            total += itemTotal; units += item.qty;
+            const itemCents = toCents(item.price) * item.qty;
+            const itemTotal = fromCents(itemCents);
+            totalCents += itemCents; units += item.qty;
             const tag = `<span class="price-tag ${item.tier}" title="Click to change price list"
                  onclick="event.stopPropagation(); toggleItemPrice(${index})">${TIER_LABELS[item.tier]}</span>`;
             html += `<div class="cart-item tier-${item.tier}">
@@ -832,13 +884,17 @@
                 </div>
                 <div class="qty-control">
                     <div class="qty-btn" onclick="updateQty(${index}, -1)">&minus;</div>
-                    <div class="qty-val">${item.qty}</div>
+                    <input class="qty-val qty-input" type="text" inputmode="numeric" value="${item.qty}"
+                           aria-label="Quantity" onfocus="this.select()"
+                           onkeydown="if (event.key === 'Enter') this.blur()"
+                           onchange="setQty(${index}, this.value)">
                     <div class="qty-btn" onclick="updateQty(${index}, 1)">+</div>
                 </div>
                 <div class="ci-total">${itemTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                 <i class="ri ri-close-line ci-remove" onclick="removeItem(${index})" title="Remove"></i>
             </div>`;
         });
+        const total = fromCents(totalCents);
         cartTotal = total;
         container.innerHTML = html;
         document.getElementById('cart-subtotal').innerText = total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -873,85 +929,109 @@
         }
     }
 
-    function calculateChange() {
-        const tenderedInput = document.getElementById('tendered').value;
-        const tendered = tenderedInput === "" ? cartTotal : (parseFloat(tenderedInput) || 0);
-        const change = tendered - cartTotal;
+    // Shows the outcome of what was typed and enables the button only for a
+    // payment the server will accept (same rules as apps/sales/services.py).
+    function showPaymentOutcome(paidCents, cashCents) {
+        const dueCents = toCents(cartTotal);
         const changeEl = document.getElementById('change-amount');
         const changeLabel = document.getElementById('change-label');
         const btn = document.getElementById('complete-sale-btn');
-        if (change >= 0) {
+        if (paidCents >= dueCents) {
+            const changeCents = paidCents - dueCents;
+            if (changeCents > cashCents) {
+                // Change comes out of the cash drawer. Over-paying by MoMo/card
+                // and handing back cash leaves the drawer short at close.
+                changeLabel.innerText = "MOMO / CARD IS MORE THAN THE BILL BY:";
+                changeEl.innerText = fmtMoney(fromCents(changeCents - cashCents));
+                changeEl.className = "fs-4 fw-bold text-danger";
+                btn.disabled = true; btn.innerText = "CHECK THE AMOUNT";
+                return;
+            }
             changeLabel.innerText = "CHANGE DUE:";
-            changeEl.innerText = change.toLocaleString(undefined, {minimumFractionDigits: 2});
+            changeEl.innerText = fmtMoney(fromCents(changeCents));
             changeEl.className = "fs-3 fw-bold text-success";
             btn.disabled = false; btn.innerText = "COMPLETE SALE";
         } else {
-            const debt = Math.abs(change);
+            const debt = fromCents(dueCents - paidCents);
             if (selectedCustomerId) {
                 changeLabel.innerText = "DEBT / ON ACCOUNT:";
-                changeEl.innerText = debt.toLocaleString(undefined, {minimumFractionDigits: 2});
+                changeEl.innerText = fmtMoney(debt);
                 changeEl.className = "fs-3 fw-bold text-danger";
                 btn.disabled = false; btn.innerText = "CONFIRM (CREDIT SALE)";
             } else {
                 changeLabel.innerText = "REMAINING DUE (SELECT CUSTOMER):";
-                changeEl.innerText = debt.toLocaleString(undefined, {minimumFractionDigits: 2});
+                changeEl.innerText = fmtMoney(debt);
                 changeEl.className = "fs-4 fw-bold text-danger";
                 btn.disabled = true; btn.innerText = "CUSTOMER REQUIRED FOR CREDIT";
             }
         }
+        if (saleInFlight) btn.disabled = true;
+    }
+
+    function calculateChange() {
+        const tenderedInput = document.getElementById('tendered').value;
+        const paidCents = tenderedInput === "" ? toCents(cartTotal) : toCents(tenderedInput);
+        const method = (document.querySelector('input[name="payment"]:checked') || {}).value;
+        showPaymentOutcome(paidCents, method === 'CASH' ? paidCents : 0);
+    }
+
+    function splitCents() {
+        return {
+            cash: toCents(document.getElementById('split-cash').value),
+            momo: toCents(document.getElementById('split-momo').value),
+            card: toCents(document.getElementById('split-card').value),
+        };
     }
 
     function calculateSplitTotal() {
-        const cash = parseFloat(document.getElementById('split-cash').value) || 0;
-        const momo = parseFloat(document.getElementById('split-momo').value) || 0;
-        const card = parseFloat(document.getElementById('split-card').value) || 0;
-        const totalPaid = cash + momo + card;
-        const remaining = cartTotal - totalPaid;
-        const changeEl = document.getElementById('change-amount');
-        const changeLabel = document.getElementById('change-label');
-        const btn = document.getElementById('complete-sale-btn');
-        if (remaining > 0.01) {
-            if (selectedCustomerId) {
-                changeLabel.innerText = "DEBT / ON ACCOUNT:";
-                changeEl.innerText = remaining.toLocaleString(undefined, {minimumFractionDigits: 2});
-                changeEl.className = "fs-3 fw-bold text-danger";
-                btn.disabled = false; btn.innerText = "CONFIRM (CREDIT SALE)";
-            } else {
-                changeLabel.innerText = "REMAINING DUE (SELECT CUSTOMER):";
-                changeEl.innerText = remaining.toLocaleString(undefined, {minimumFractionDigits: 2});
-                changeEl.className = "fs-4 fw-bold text-danger";
-                btn.disabled = true; btn.innerText = "CUSTOMER REQUIRED FOR CREDIT";
-            }
-        } else {
-            const change = Math.abs(remaining);
-            changeLabel.innerText = "CHANGE DUE:";
-            changeEl.innerText = change.toLocaleString(undefined, {minimumFractionDigits: 2});
-            changeEl.className = "fs-3 fw-bold text-success";
-            btn.disabled = false; btn.innerText = "COMPLETE SALE";
-        }
+        const c = splitCents();
+        showPaymentOutcome(c.cash + c.momo + c.card, c.cash);
     }
 
     // --- PAYMENT PROCESSING ---
+    // Updates the stock shown on cards and in the cart limits after a sale,
+    // from the quantities the SERVER recorded.
+    function applySoldStock(lines) {
+        (lines || []).forEach(line => {
+            const card = document.querySelector(`#product-grid .product-card[data-product-id="${line.product_id}"]`);
+            if (!card) return;
+            const left = Math.max(0, (parseInt(card.dataset.stock, 10) || 0) - line.qty);
+            card.dataset.stock = left;
+            card.classList.toggle('out-of-stock', left <= 0);
+            const badge = card.querySelector('.stock-badge');
+            if (badge) {
+                badge.textContent = `${left} left`;
+                badge.classList.toggle('bg-label-danger', left <= 0);
+                badge.classList.toggle('bg-label-success', left > 0);
+                badge.classList.remove('bg-label-warning');
+            }
+        });
+    }
+
     async function processSale() {
+        // One checkout at a time: a second click while the first is on the
+        // wire does nothing.
+        if (saleInFlight) return;
+        if (!cart.length) return;
         const btn = document.getElementById('complete-sale-btn');
+        saleInFlight = true;
         btn.disabled = true; btn.innerText = "PROCESSING...";
+
+        // Same cart + same key = same sale, however many times it is sent.
+        if (!checkoutRef) checkoutRef = newRef();
+
         let payments = [];
-        let totalPaidAmount = 0;
         const isSplit = document.getElementById('pay-split').checked;
         if (isSplit) {
-            const cash = parseFloat(document.getElementById('split-cash').value) || 0;
-            const momo = parseFloat(document.getElementById('split-momo').value) || 0;
-            const card = parseFloat(document.getElementById('split-card').value) || 0;
-            if (cash > 0) payments.push({ method: 'CASH', amount: cash });
-            if (momo > 0) payments.push({ method: 'MOMO', amount: momo });
-            if (card > 0) payments.push({ method: 'CARD', amount: card });
-            totalPaidAmount = cash + momo + card;
+            const c = splitCents();
+            if (c.cash > 0) payments.push({ method: 'CASH', amount: (fromCents(c.cash)).toFixed(2) });
+            if (c.momo > 0) payments.push({ method: 'MOMO', amount: (fromCents(c.momo)).toFixed(2) });
+            if (c.card > 0) payments.push({ method: 'CARD', amount: (fromCents(c.card)).toFixed(2) });
         } else {
             const method = document.querySelector('input[name="payment"]:checked').value;
             const tenderedInput = document.getElementById('tendered').value;
-            const paymentAmount = tenderedInput === "" ? cartTotal : (parseFloat(tenderedInput) || 0);
-            payments.push({ method: method, amount: paymentAmount });
-            totalPaidAmount = paymentAmount;
+            const paidCents = tenderedInput === "" ? toCents(cartTotal) : toCents(tenderedInput);
+            if (paidCents > 0) payments.push({ method: method, amount: fromCents(paidCents).toFixed(2) });
         }
         // Send the price LIST per line. The server looks the money up itself;
         // `price` goes along only so a stale page is caught and rejected.
@@ -959,40 +1039,48 @@
             cart: cart.map(i => ({ id: i.id, qty: i.qty, tier: i.tier, price: i.price })),
             payments: payments,
             customer_id: selectedCustomerId,
+            client_ref: checkoutRef,
         };
+        const finish = () => { saleInFlight = false; btn.disabled = false; btn.innerText = "COMPLETE SALE"; };
+        let result;
         try {
             const response = await fetch('/sales/process/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
                 body: JSON.stringify(payload)
             });
-            const result = await response.json();
-            if (result.success) {
-                bootstrap.Modal.getInstance(document.getElementById('checkoutModal')).hide();
-                // Print what the server recorded, not what the page calculated.
-                const serverTotal = result.total_amount;
-                const change = result.change_due || 0;
-                const debt = result.balance_due || 0;
-                const recHtml = buildReceiptHTML(result.invoice_number, new Date().toLocaleString(),
-                                                 result.lines || [], payments, serverTotal,
-                                                 result.amount_paid, change, debt);
-                document.getElementById('receipt-preview-content').innerHTML = recHtml;
-                document.getElementById('thermal-receipt-content').innerHTML = recHtml;
-                new bootstrap.Modal(document.getElementById('receiptModal')).show();
-                cart = []; renderCart(); selectedCustomerId = null;
-                setGlobalTier('RETAIL');
-                document.getElementById('selected-customer-name').innerText = "Guest Customer";
-                btn.disabled = false; btn.innerText = "COMPLETE SALE";
-                resetSearch();
-            } else {
-                Swal.fire({ icon: 'error', title: 'Failed', text: result.message || 'Unknown error', confirmButtonColor: '#ff3e1d' });
-                btn.disabled = false; btn.innerText = "COMPLETE SALE";
-            }
+            result = await response.json();
         } catch (error) {
             console.error(error);
-            Swal.fire({ icon: 'error', title: 'Network Error', text: 'Check connection.', confirmButtonColor: '#ff3e1d' });
-            btn.disabled = false; btn.innerText = "COMPLETE SALE";
+            finish();
+            // The key is kept: pressing COMPLETE SALE again either finishes this
+            // sale or returns it if it already went through — never a second one.
+            Swal.fire({ icon: 'error', title: 'Connection problem',
+                text: 'We could not confirm the sale. Press COMPLETE SALE again — if it already went through it will NOT be charged twice.',
+                confirmButtonColor: '#ff3e1d' });
+            return;
         }
+        if (!result.success) {
+            finish();
+            Swal.fire({ icon: 'error', title: 'Failed', text: result.message || 'Unknown error', confirmButtonColor: '#ff3e1d' });
+            return;
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById('checkoutModal')).hide();
+        // Print what the server recorded, not what the page calculated.
+        const recHtml = buildReceiptHTML(result.invoice_number, new Date().toLocaleString(),
+                                         result.lines || [], payments, result.total_amount,
+                                         result.amount_paid, result.change_due || 0, result.balance_due || 0);
+        document.getElementById('receipt-preview-content').innerHTML = recHtml;
+        document.getElementById('thermal-receipt-content').innerHTML = recHtml;
+        new bootstrap.Modal(document.getElementById('receiptModal')).show();
+        // Also on a duplicate: this page never saw the first response.
+        applySoldStock(result.lines);
+        cart = []; renderCart(); selectedCustomerId = null;
+        setGlobalTier('RETAIL');
+        document.getElementById('selected-customer-name').innerText = "Guest Customer";
+        finish();
+        resetSearch();
     }
 
     function buildReceiptHTML(inv, date, items, payments, total, tendered, change, debt) {
@@ -1007,7 +1095,7 @@
                 <span class="print-col-total">${i.line_total.toFixed(2)}</span>
             </div>
         </div>`).join('');
-        let paymentsHtml = payments.map(p => `<div class="print-row" style="display:flex;justify-content:space-between;"><span>${p.method} TENDERED:</span><span>${p.amount.toFixed(2)}</span></div>`).join('');
+        let paymentsHtml = payments.map(p => `<div class="print-row" style="display:flex;justify-content:space-between;"><span>${p.method} TENDERED:</span><span>${Number(p.amount).toFixed(2)}</span></div>`).join('');
         let footerMetricsHtml = debt > 0
             ? `<div class="print-row print-bold" style="display:flex;justify-content:space-between;font-weight:bold;margin-top:5px;color:#cc0000;"><span>BALANCE DUE (DEBT):</span><span>${debt.toFixed(2)}</span></div>`
             : `<div class="print-row print-bold" style="display:flex;justify-content:space-between;font-weight:bold;margin-top:5px;"><span>CHANGE GIVEN:</span><span>${change.toFixed(2)}</span></div>`;
@@ -1018,7 +1106,7 @@
             <div>Tel: {{ user.assigned_location.phone_number }}</div>
         </div>
         <div class="print-divider" style="border-bottom:1px dashed #000;margin:5px 0;"></div>
-        <div class="print-row" style="display:flex;justify-content:space-between;"><span>Inv: #${inv.slice(0, 8)}</span><span>${date.split(',')[0]}</span></div>
+        <div class="print-row" style="display:flex;justify-content:space-between;"><span>${esc(inv)}</span><span>${date.split(',')[0]}</span></div>
         <div class="print-row" style="display:flex;justify-content:space-between;"><span>Cashier: {{ user.username }}</span></div>
         <div class="print-divider" style="border-bottom:1px dashed #000;margin:5px 0;"></div>
         <div class="print-row print-bold" style="font-weight:bold;"><span class="print-col-name">Item</span><span class="print-col-qty">Qty</span><span class="print-col-total">Total</span></div>

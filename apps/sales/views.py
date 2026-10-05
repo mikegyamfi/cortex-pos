@@ -12,13 +12,17 @@ from django.views.decorators.http import require_POST
 
 from .models import Sale, SaleItem, SaleTax, RegisterSession, SalePayment, Delivery
 from ..core.decorators import role_required, SELLING_STAFF, MANAGEMENT
+from ..core.search import search_queryset
 from ..customers.models import Customer
 from ..finance.models import Expense
 from ..inventory.models import StockBatch, StockAdjustment
 from ..location.models import Location
 from ..notifications.services import SMSService
 from ..products.models import Category, Product
-from .services import SaleError, receipt_lines, record_sale, resolve_cart
+from .services import (
+    SaleError, parse_money, receipt_lines, receipt_lines_for_sale, record_refund,
+    record_sale, record_settlement, resolve_cart,
+)
 
 
 TWO_PLACES = Decimal('0.01')
@@ -27,6 +31,35 @@ TWO_PLACES = Decimal('0.01')
 def _q(value):
     """Quantize a Decimal to 2dp (banker-safe rounding)."""
     return Decimal(value).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+
+
+def _open_session(user, location, lock=False):
+    """
+    The user's open drawer at `location`, oldest first so every request picks
+    the same one. With lock=True the row is held until the transaction ends,
+    which serialises checkouts on one till (no lost drawer updates, and a
+    retried checkout sees the first attempt's sale).
+    """
+    qs = RegisterSession.objects.filter(
+        user=user, location=location, status=RegisterSession.Status.OPEN,
+    ).order_by('start_time', 'id')
+    if lock:
+        qs = qs.select_for_update()
+    return qs.first()
+
+
+def _sale_response(sale, lines, duplicate=False):
+    return JsonResponse({
+        'success': True,
+        'duplicate': duplicate,
+        'invoice_number': sale.invoice_number,
+        'sale_id': sale.id,
+        'total_amount': float(sale.total_amount),
+        'amount_paid': float(sale.amount_paid),
+        'change_due': float(sale.change_due),
+        'balance_due': float(sale.balance_remaining),
+        'lines': lines,
+    })
 
 
 def _location_stock_map(location, product_ids=None):
@@ -55,20 +88,22 @@ def pos_view(request):
     location = user.assigned_location
 
     # 1. Check for Active Session
-    active_session = RegisterSession.objects.filter(
-        user=user,
-        location=location,
-        status=RegisterSession.Status.OPEN
-    ).first()
+    active_session = _open_session(user, location)
 
     if not active_session:
         if request.method == 'POST':
-            # Handle Opening Logic
-            RegisterSession.objects.create(
-                user=user,
-                location=location,
-                opening_balance=request.POST.get('opening_balance', 0) or 0
-            )
+            try:
+                opening = parse_money(request.POST.get('opening_balance'), 'Opening float')
+                if opening < 0:
+                    raise SaleError('Opening float cannot be negative.')
+            except SaleError as err:
+                messages.error(request, str(err))
+                return render(request, 'sales/open_register.html')
+            with transaction.atomic():
+                # Re-check inside the transaction so two tabs can't open two
+                # drawers (sales would then be split between them).
+                if not _open_session(user, location, lock=True):
+                    RegisterSession.objects.create(user=user, location=location, opening_balance=opening)
             return redirect('sales:pos')
         return render(request, 'sales/open_register.html')
 
@@ -108,11 +143,7 @@ def product_search_api(request):
     # Scoped to the cashier's shop — search never crosses into other shops.
     products = Product.objects.filter(is_active=True, location=location).select_related('category')
     if query:
-        products = products.filter(
-            Q(name__icontains=query) |
-            Q(sku__icontains=query) |
-            Q(barcode__icontains=query)
-        )
+        products = search_queryset(products, query, ['name', 'sku', 'barcode'])
     products = list(products.order_by('name')[:50])
 
     stock_map = _location_stock_map(location, [p.id for p in products])
@@ -150,9 +181,15 @@ def process_sale(request):
     except (ValueError, TypeError):
         return JsonResponse({'success': False, 'message': 'Malformed request.'}, status=400)
 
+    if not isinstance(data, dict):
+        return JsonResponse({'success': False, 'message': 'Malformed request.'}, status=400)
+
     cart = data.get('cart', [])
     payments = data.get('payments', [])
     customer_id = data.get('customer_id')
+    client_ref = data.get('client_ref') or None
+    if client_ref is not None and (not isinstance(client_ref, str) or len(client_ref) > 64):
+        return JsonResponse({'success': False, 'message': 'Malformed request.'}, status=400)
 
     if not cart:
         return JsonResponse({'success': False, 'message': 'Cart is empty.'}, status=400)
@@ -160,42 +197,52 @@ def process_sale(request):
     user = request.user
     location = user.assigned_location
 
-    session = RegisterSession.objects.filter(
-        user=user, location=location, status=RegisterSession.Status.OPEN
-    ).first()
+    # Locking the drawer serialises checkouts on this till: a double click or
+    # a retry waits for the first request, then finds its sale below.
+    session = _open_session(user, location, lock=True)
     if not session:
         return JsonResponse(
             {'success': False, 'message': 'No active register session. Please open register.'},
             status=400,
         )
 
+    if client_ref:
+        existing = Sale.objects.filter(client_ref=client_ref).first()
+        if existing is not None:
+            if existing.cashier_id != user.id:
+                return JsonResponse({'success': False, 'message': 'Malformed request.'}, status=400)
+            # Already recorded — hand back the original, never sell it twice.
+            return _sale_response(existing, receipt_lines_for_sale(existing), duplicate=True)
+
     customer = None
     if customer_id:
-        customer = Customer.objects.filter(id=customer_id).first()
+        # Staff may only bill their own shop's customers (or legacy customers
+        # not yet bound to any shop) — never another shop's account.
+        customers = Customer.objects.all()
+        if user.role != 'OWNER' and not user.is_superuser:
+            customers = customers.filter(Q(location=location) | Q(location__isnull=True))
+        customer = customers.filter(id=customer_id).first()
+        if customer is None:
+            return JsonResponse({'success': False, 'message': 'Customer not found.'}, status=400)
 
     try:
         resolved, qty_per_product = resolve_cart(cart, location)
         sale = record_sale(
             location=location, user=user, session=session, customer=customer,
             resolved=resolved, qty_per_product=qty_per_product, payments=payments,
+            client_ref=client_ref,
         )
     except SaleError as err:
         transaction.set_rollback(True)
         return JsonResponse({'success': False, 'message': str(err)}, status=400)
-    except Exception as err:
+    except Exception:
         transaction.set_rollback(True)
-        return JsonResponse({'success': False, 'message': str(err)}, status=400)
+        return JsonResponse(
+            {'success': False, 'message': 'The sale could not be saved. Nothing was charged — please try again.'},
+            status=400,
+        )
 
-    return JsonResponse({
-        'success': True,
-        'invoice_number': sale.invoice_number,
-        'sale_id': sale.id,
-        'total_amount': float(sale.total_amount),
-        'amount_paid': float(sale.amount_paid),
-        'change_due': float(sale.change_due),
-        'balance_due': float(sale.balance_remaining),
-        'lines': receipt_lines(resolved),
-    })
+    return _sale_response(sale, receipt_lines(resolved))
 
 
 @login_required
@@ -222,11 +269,10 @@ def sale_list(request):
     # 1. Search (Invoice or Customer)
     query = request.GET.get('q')
     if query:
-        sales = sales.filter(
-            Q(invoice_number__icontains=query) |
-            Q(customer__phone_number__icontains=query) |
-            Q(customer__first_name__icontains=query)
-        )
+        sales = search_queryset(sales, query, [
+            'invoice_number', 'customer__phone_number',
+            'customer__first_name', 'customer__last_name',
+        ])
 
     # 2. Status Filter (Enhanced for Debt)
     status = request.GET.get('status')
@@ -330,11 +376,7 @@ def close_register_view(request):
     location = user.assigned_location
 
     # Get the active session
-    session = RegisterSession.objects.filter(
-        user=user,
-        location=location,
-        status=RegisterSession.Status.OPEN
-    ).first()
+    session = _open_session(user, location)
 
     if not session:
         messages.error(request, "No open register session found.")
@@ -358,27 +400,42 @@ def close_register_view(request):
 
     if request.method == 'POST':
         # Get actual counts from form
-        actual_cash_str = request.POST.get('actual_cash', '0')
         notes = request.POST.get('notes', '')
 
+        # A mistyped count used to become 0.00 silently and close the shift
+        # with a fake shortage. Refuse it instead.
+        raw = (request.POST.get('actual_cash') or '').strip()
         try:
-            actual_cash = Decimal(actual_cash_str)
-        except:
-            actual_cash = Decimal('0.00')
+            if not raw:
+                raise SaleError('Enter the cash you counted.')
+            actual_cash = parse_money(raw, 'Counted cash')
+            if actual_cash < 0:
+                raise SaleError('Counted cash cannot be negative.')
+        except SaleError as err:
+            messages.error(request, str(err))
+            return redirect('sales:close_register')
 
-        # Update Session
-        session.closing_balance_expected = expected_cash
-        session.closing_balance_actual = actual_cash
-        session.end_time = timezone.now()
-        session.notes = notes
+        with transaction.atomic():
+            session = RegisterSession.objects.select_for_update().get(pk=session.pk)
+            if session.status != RegisterSession.Status.OPEN:
+                messages.info(request, "This register was already closed.")
+                return redirect('sales:sessions')
+            # Re-read the drawer under lock so a sale finishing at the same
+            # moment is counted in what we expect.
+            expected_cash = session.opening_balance + session.total_cash_sales - till_expenses
 
-        # Determine Status (Discrepancy Check)
-        if actual_cash != expected_cash:
-            session.status = RegisterSession.Status.DISCREPANCY
-        else:
-            session.status = RegisterSession.Status.CLOSED
+            session.closing_balance_expected = expected_cash
+            session.closing_balance_actual = actual_cash
+            session.end_time = timezone.now()
+            session.notes = notes
 
-        session.save()
+            # Determine Status (Discrepancy Check)
+            if actual_cash != expected_cash:
+                session.status = RegisterSession.Status.DISCREPANCY
+            else:
+                session.status = RegisterSession.Status.CLOSED
+
+            session.save()
 
         messages.success(request, "Register closed successfully.")
         return redirect('sales:sessions')
@@ -430,68 +487,32 @@ def add_payment(request, pk):
     sale = get_object_or_404(Sale, pk=pk)
     user = request.user
 
-    session = RegisterSession.objects.filter(
-        user=user,
-        location=user.assigned_location,
-        status=RegisterSession.Status.OPEN
-    ).first()
+    if user.role != 'OWNER' and not user.is_superuser and sale.location_id != user.assigned_location_id:
+        messages.error(request, "You can only take payments on sales from your own location.")
+        return redirect('sales:list')
+
+    session = _open_session(user, user.assigned_location, lock=True)
     if not session:
         messages.error(request, "You must have an open register to accept payments.")
         return redirect('sales:detail', pk=pk)
 
     # Build the list of (method, amount) tendered — single method or a split.
-    valid_methods = {pm.value for pm in SalePayment.PaymentMethod}
     method = request.POST.get('payment_method')
-    tendered = []
-    if method == 'SPLIT':
-        for m, field in (('CASH', 'split_cash'), ('MOMO', 'split_momo'), ('CARD', 'split_card')):
-            amt = _q(request.POST.get(field) or 0)
-            if amt > 0:
-                tendered.append((m, amt))
-    elif method in valid_methods:
-        amt = _q(request.POST.get('amount') or 0)
-        if amt > 0:
-            tendered.append((method, amt))
-
-    total_tendered = sum((a for _, a in tendered), Decimal('0.00'))
-    if total_tendered <= 0:
-        messages.error(request, "Enter a valid payment amount.")
+    try:
+        if method == 'SPLIT':
+            tendered = [
+                (m, parse_money(request.POST.get(field), f'{m.title()} amount'))
+                for m, field in (('CASH', 'split_cash'), ('MOMO', 'split_momo'), ('CARD', 'split_card'))
+            ]
+        else:
+            tendered = [(method, parse_money(request.POST.get('amount'), 'Amount'))]
+        total_tendered, change_due = record_settlement(
+            sale=sale, user=user, session=session, tendered=tendered,
+        )
+    except SaleError as err:
+        transaction.set_rollback(True)
+        messages.error(request, str(err))
         return redirect('sales:detail', pk=pk)
-
-    # Overpayment above the outstanding balance is returned as cash change.
-    balance = max(Decimal('0.00'), sale.total_amount - sale.amount_paid)
-    change_due = max(Decimal('0.00'), total_tendered - balance)
-    net_applied = total_tendered - change_due
-
-    # Record each tendered amount as a settlement payment + bump the drawer bucket.
-    for m, a in tendered:
-        SalePayment.objects.create(
-            sale=sale, payment_method=m, amount=a, processed_by=user,
-            is_settlement=True, reference_id="DEBT SETTLEMENT",
-        )
-        if m == 'CASH':
-            session.total_cash_sales += a
-        elif m == 'MOMO':
-            session.total_momo_sales += a
-        elif m == 'CARD':
-            session.total_card_sales += a
-
-    # Change is always handed back in physical cash.
-    if change_due > 0:
-        SalePayment.objects.create(
-            sale=sale, payment_method=SalePayment.PaymentMethod.CASH,
-            amount=-change_due, reference_id="CHANGE GIVEN", processed_by=user,
-        )
-        session.total_cash_sales -= change_due
-
-    sale.amount_paid += net_applied
-    sale.change_due += change_due
-    # Only a draft (PENDING) sale graduates to COMPLETED here; credit sales are
-    # already COMPLETED and partially-refunded sales keep their status.
-    if sale.status == Sale.Status.PENDING_PAYMENT and sale.amount_paid >= sale.total_amount:
-        sale.status = Sale.Status.COMPLETED
-    sale.save()
-    session.save()
 
     if change_due > 0:
         messages.success(request, f"Payment of {total_tendered} recorded. Change returned: {change_due}.")
@@ -523,97 +544,32 @@ def process_refund(request, pk):
     user = request.user
 
     if request.method == 'POST':
-        # Refund cash leaves the manager's currently-open till
-        session = RegisterSession.objects.filter(
-            user=user,
-            location=user.assigned_location,
-            status=RegisterSession.Status.OPEN,
-        ).first()
+        # Refund money leaves the manager's currently-open till
+        session = _open_session(user, user.assigned_location, lock=True)
         if not session:
             messages.error(request, "You must have an open register to issue a refund.")
             return redirect('sales:detail', pk=pk)
 
-        refund_reason = request.POST.get('reason', 'Customer Return')
-        refund_method = request.POST.get('refund_method', SalePayment.PaymentMethod.CASH)
-        items_to_refund = request.POST.getlist('refund_items')
-
-        total_refund_amount = Decimal('0.00')
-        refunded_count = 0
-
-        for item_id in items_to_refund:
-            sale_item = get_object_or_404(SaleItem, id=item_id, sale=sale)
-            if sale_item.is_refunded:
-                continue
-
-            # 1. Mark item refunded
-            sale_item.is_refunded = True
-            sale_item.save()
-            refunded_count += 1
-
-            # 2. Restock and audit (if we know which batch it came from)
-            if sale_item.source_batch:
-                # Lock the batch row to avoid races with concurrent sales
-                batch = StockBatch.objects.select_for_update().get(pk=sale_item.source_batch_id)
-                batch.quantity += sale_item.quantity
-                batch.save()
-
-                StockAdjustment.objects.create(
-                    location=sale.location,
-                    batch=batch,
-                    adjusted_quantity=sale_item.quantity,
-                    reason='RETURN',
-                    notes=f"Refund for Invoice #{sale.invoice_number} ({refund_reason})",
-                    performed_by=user,
-                )
-
-            total_refund_amount += sale_item.total_price
-
-        if refunded_count == 0:
-            messages.warning(request, "No items selected for refund.")
+        try:
+            refund_value, money_returned = record_refund(
+                sale=sale, user=user, session=session,
+                item_ids=request.POST.getlist('refund_items'),
+                method=request.POST.get('refund_method', SalePayment.PaymentMethod.CASH),
+                reason=request.POST.get('reason', 'Customer Return'),
+            )
+        except SaleError as err:
+            transaction.set_rollback(True)
+            messages.warning(request, str(err))
             return redirect('sales:detail', pk=pk)
 
-        total_refund_amount = _q(total_refund_amount)
-
-        # 3. Negative SalePayment so SUM(SalePayment.amount) reconciles to net revenue
-        SalePayment.objects.create(
-            sale=sale,
-            payment_method=refund_method,
-            amount=-total_refund_amount,
-            reference_id=f"REFUND - {refund_reason}"[:100],
-            processed_by=user,
-        )
-
-        # 4. Reduce sale.amount_paid AND total_amount by the refunded value.
-        # Reducing total_amount too keeps balance_remaining (= total_amount -
-        # amount_paid) correct after a partial refund on a credit/debt sale —
-        # otherwise the customer would appear to still owe for returned goods.
-        sale.amount_paid = max(Decimal('0.00'), _q(sale.amount_paid - total_refund_amount))
-        sale.total_amount = max(Decimal('0.00'), _q(sale.total_amount - total_refund_amount))
-
-        # 5. Sale status: REFUNDED if no items remain unrefunded, else PARTIAL
-        all_refunded = not sale.items.filter(is_refunded=False).exists()
-        sale.status = Sale.Status.REFUNDED if all_refunded else Sale.Status.PARTIAL_REFUND
-        sale.save()
-
-        # 6. Drawer adjustment — refund cash leaves the till
-        if refund_method == SalePayment.PaymentMethod.CASH:
-            session.total_cash_sales -= total_refund_amount
-        elif refund_method == SalePayment.PaymentMethod.MOMO:
-            session.total_momo_sales -= total_refund_amount
-        elif refund_method == SalePayment.PaymentMethod.CARD:
-            session.total_card_sales -= total_refund_amount
-        session.save()
-
-        # 7. Customer stats — decrement spend, leave visit count alone (the visit happened)
-        if sale.customer_id:
-            try:
-                customer = Customer.objects.get(id=sale.customer_id)
-                customer.total_spent = max(Decimal('0.00'), customer.total_spent - total_refund_amount)
-                customer.save()
-            except Customer.DoesNotExist:
-                pass
-
-        messages.success(request, f"Refund processed. Amount returned: {total_refund_amount}")
+        if money_returned == refund_value:
+            messages.success(request, f"Refund processed. Amount returned: {money_returned}")
+        else:
+            messages.success(request, (
+                f"Refund processed. Goods worth {refund_value} returned: "
+                f"{refund_value - money_returned} came off the amount owed and "
+                f"{money_returned} was paid back."
+            ))
         return redirect('sales:detail', pk=pk)
 
     return render(request, 'sales/process_refund.html', {'sale': sale})
@@ -710,12 +666,10 @@ def arrears_list(request):
         unpaid = unpaid.filter(location=user.assigned_location)
 
     if query:
-        unpaid = unpaid.filter(
-            Q(customer__first_name__icontains=query) |
-            Q(customer__last_name__icontains=query) |
-            Q(customer__phone_number__icontains=query) |
-            Q(invoice_number__icontains=query)
-        )
+        unpaid = search_queryset(unpaid, query, [
+            'customer__first_name', 'customer__last_name',
+            'customer__phone_number', 'invoice_number',
+        ])
 
     today = timezone.now().date()
     groups = {}
@@ -774,12 +728,10 @@ def arrears_payment_log(request):
     if user.role != 'OWNER':
         payments = payments.filter(sale__location=user.assigned_location)
     if query:
-        payments = payments.filter(
-            Q(sale__invoice_number__icontains=query) |
-            Q(sale__customer__first_name__icontains=query) |
-            Q(sale__customer__last_name__icontains=query) |
-            Q(sale__customer__phone_number__icontains=query)
-        )
+        payments = search_queryset(payments, query, [
+            'sale__invoice_number', 'sale__customer__first_name',
+            'sale__customer__last_name', 'sale__customer__phone_number',
+        ])
     if start_date:
         payments = payments.filter(created_at__date__gte=start_date)
     if end_date:

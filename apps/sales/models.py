@@ -72,6 +72,10 @@ class Sale(BaseRetailModel):
 
     # Identifiers
     invoice_number = models.CharField(max_length=50, unique=True, editable=False, db_index=True)
+    # Idempotency key minted by the POS for one checkout attempt. A retried
+    # request (double click, timeout, flaky network) carries the same key and
+    # gets the original sale back instead of selling the goods a second time.
+    client_ref = models.CharField(max_length=64, unique=True, null=True, blank=True, editable=False)
 
     # Context
     location = models.ForeignKey('location.Location', on_delete=models.PROTECT, related_name='sales')
@@ -113,7 +117,7 @@ class Sale(BaseRetailModel):
     def save(self, *args, **kwargs):
         if not self.invoice_number:
             import uuid, time
-            self.invoice_number = f"INV-{int(time.time())}-{uuid.uuid4().hex[:4].upper()}"
+            self.invoice_number = f"INV-{int(time.time())}-{uuid.uuid4().hex[:6].upper()}"
         super().save(*args, **kwargs)
 
     @property
@@ -207,6 +211,12 @@ class SalePayment(TimeStampedModel):
     # add_payment) rather than being part of the original sale. Drives the
     # Arrears Payment Log.
     is_settlement = models.BooleanField(default=False)
+
+    # The drawer this money physically went into (or came out of). A settlement
+    # or refund on an old sale moves money through TODAY's drawer, not the
+    # original sale's, so this is what lets a shift be reconciled row by row.
+    register_session = models.ForeignKey(RegisterSession, on_delete=models.PROTECT, null=True, blank=True,
+                                         related_name='payments')
 
     def __str__(self):
         return f"{self.payment_method}: {self.amount} for {self.sale.invoice_number}"
